@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from app.services.subscription_service import require_subscription
 from pydantic import BaseModel
 import openai
 import os
@@ -9,16 +8,18 @@ router = APIRouter()
 openai.api_key = os.getenv("OPENAI_API_KEY", "your-openai-key")
 
 class PostRequest(BaseModel):
+    user_id: int
     industry: str
     topic: str
     tone: str = "professional"
 
 class CommentRequest(BaseModel):
+    user_id: int
     post_text: str
     tone: str = "thoughtful"
 
 @router.post("/post")
-def generate_post(data: PostRequest, ok: bool = Depends(lambda: require_subscription(data.user_id))):
+def generate_post(data: PostRequest):
     try:
         prompt = f"Write a {data.tone} LinkedIn post for someone in the {data.industry} industry about {data.topic}."
         response = openai.ChatCompletion.create(
@@ -34,11 +35,12 @@ def generate_post(data: PostRequest, ok: bool = Depends(lambda: require_subscrip
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/comment")
-def generate_comment(data: CommentRequest, ok: bool = Depends(lambda: require_subscription(data.user_id))):
+def generate_comment(data: CommentRequest):
     try:
-        prompt = f"Write a {data.tone} comment in response to this LinkedIn post:
+        prompt = f"""Write a {data.tone} comment in response to this LinkedIn post:
 
-"{data.post_text}""
+\"\"\"{data.post_text}\"\"\"
+"""
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
