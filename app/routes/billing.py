@@ -63,7 +63,7 @@ def create_payment(data: PayRequest):
     }
 
 @router.post("/callback")
-def handle_callback(request: Request, db: Session = Depends(get_db)):
+async def handle_callback(request: Request, db: Session = Depends(get_db)):
     data = await request.json()
     email = data.get("email")
     status = data.get("transactionStatus")
