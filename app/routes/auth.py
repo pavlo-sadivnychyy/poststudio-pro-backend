@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 import requests
 import os
 import jwt
 import datetime
+from urllib.parse import quote
 from app.models.database import get_db
 from app.services.user_service import create_or_update_user
 
@@ -17,11 +18,12 @@ JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecretjwtkey")  # Візьми з
 
 @router.get("/linkedin/login")
 def linkedin_login():
+    encoded_redirect_uri = quote(REDIRECT_URI, safe='')
     linkedin_auth_url = (
         f"https://www.linkedin.com/oauth/v2/authorization"
         f"?response_type=code"
         f"&client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
+        f"&redirect_uri={encoded_redirect_uri}"
         f"&scope=r_liteprofile%20r_emailaddress%20w_member_social"
     )
     return RedirectResponse(linkedin_auth_url)
@@ -76,10 +78,7 @@ def linkedin_callback(code: str, db: Session = Depends(get_db)):
     }
     jwt_token = jwt.encode(jwt_payload, JWT_SECRET, algorithm="HS256")
 
-    # Можна редіректити на фронтенд і передавати токен як параметр
-    frontend_url = f"https://your-frontend-url.com/dashboard?token={jwt_token}"
-
-    # Або просто повернути json з токеном
+    # Повертаємо json з токеном та даними користувача
     return JSONResponse({
         "message": "Login successful",
         "token": jwt_token,
