@@ -16,7 +16,9 @@ CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "your_client_secret")
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecretjwtkey")
 
 REDIRECT_URI = "https://poststudio-pro-backend-production.up.railway.app/auth/linkedin/callback"
-FRONTEND_URL = "http://localhost:3000"  # заміни на URL фронтенду
+
+# Use environment variable for frontend URL with fallback
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 @router.get("/linkedin/login")
 def linkedin_login():
@@ -36,6 +38,7 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         if state != "linkedin_oauth":
             raise HTTPException(status_code=400, detail="Invalid state parameter")
 
+        # Exchange code for access token
         token_url = "https://www.linkedin.com/oauth/v2/accessToken"
         token_data = {
             "grant_type": "authorization_code",
@@ -48,61 +51,74 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         token_res = requests.post(token_url, data=token_data, headers=headers)
 
         if token_res.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Token request failed: {token_res.status_code} - {token_res.text}"
-            )
+            # Redirect to frontend with error
+            error_params = urlencode({"error": "token_request_failed"})
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         token_json = token_res.json()
         access_token = token_json.get("access_token")
 
         if not access_token:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to get access token: {token_json}"
-            )
+            # Redirect to frontend with error
+            error_params = urlencode({"error": "no_access_token"})
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
-        # Отримуємо профіль користувача LinkedIn (r_liteprofile)
+        # Get user profile from LinkedIn
         profile_res = requests.get(
             "https://api.linkedin.com/v2/me",
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
         if profile_res.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to get profile: {profile_res.status_code} - {profile_res.text}"
-            )
+            # Redirect to frontend with error
+            error_params = urlencode({"error": "profile_request_failed"})
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         profile = profile_res.json()
 
-        # Отримуємо email користувача
+        # Get user email
         email_res = requests.get(
             "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
         if email_res.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to get email: {email_res.status_code} - {email_res.text}"
-            )
+            # Redirect to frontend with error
+            error_params = urlencode({"error": "email_request_failed"})
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         email_data = email_res.json()
-        email = email_data["elements"][0]["handle~"]["emailAddress"]
+        
+        # Safely extract email
+        try:
+            email = email_data["elements"][0]["handle~"]["emailAddress"]
+        except (KeyError, IndexError):
+            error_params = urlencode({"error": "email_extraction_failed"})
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
-        # Формуємо посилання на LinkedIn профіль (можна кастомізувати)
-        linkedin_profile_url = f"https://www.linkedin.com/in/{profile.get('id')}"
+        # Create full name safely
+        first_name = profile.get("localizedFirstName", "")
+        last_name = profile.get("localizedLastName", "")
+        full_name = f"{first_name} {last_name}".strip()
+        
+        # If no name, use email prefix
+        if not full_name:
+            full_name = email.split("@")[0]
 
+        # Create LinkedIn profile URL
+        linkedin_profile_url = f"https://www.linkedin.com/in/{profile.get('id', '')}"
+
+        # Create or update user in database
         user = create_or_update_user(
             db,
             linkedin_id=profile.get("id"),
-            name=profile.get("localizedFirstName") + " " + profile.get("localizedLastName"),
+            name=full_name,
             email=email,
             access_token=access_token,
-            linkedin_profile=linkedin_profile_url  # Додаємо нове поле
+            linkedin_profile=linkedin_profile_url
         )
 
+        # Generate JWT token
         jwt_payload = {
             "user_id": user.id,
             "email": user.email,
@@ -110,6 +126,7 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         }
         jwt_token = jwt.encode(jwt_payload, JWT_SECRET, algorithm="HS256")
 
+        # Redirect to frontend with token
         params = urlencode({"token": jwt_token})
         redirect_url = f"{FRONTEND_URL}?{params}"
 
@@ -119,4 +136,17 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         raise
     except Exception as e:
         print(f"LinkedIn callback error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        # Redirect to frontend with generic error
+        error_params = urlencode({"error": "internal_server_error", "message": str(e)})
+        return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
+
+# Add debug endpoint to check configuration
+@router.get("/linkedin/config")
+def linkedin_config():
+    return JSONResponse({
+        "client_id": CLIENT_ID[:10] + "..." if CLIENT_ID else "Not set",
+        "redirect_uri": REDIRECT_URI,
+        "frontend_url": FRONTEND_URL,
+        "has_client_secret": bool(CLIENT_SECRET and CLIENT_SECRET != "your_client_secret"),
+        "has_jwt_secret": bool(JWT_SECRET and JWT_SECRET != "supersecretjwtkey")
+    })
