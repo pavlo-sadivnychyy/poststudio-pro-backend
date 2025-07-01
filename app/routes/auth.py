@@ -16,7 +16,7 @@ CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "your_client_secret")
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecretjwtkey")
 
 REDIRECT_URI = "https://poststudio-pro-backend-production.up.railway.app/auth/linkedin/callback"
-FRONTEND_URL = "http://localhost:5173"  # заміни на URL фронтенду
+FRONTEND_URL = "http://localhost:3000"  # заміни на URL фронтенду
 
 @router.get("/linkedin/login")
 def linkedin_login():
