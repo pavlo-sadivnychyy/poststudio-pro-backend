@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 import requests
@@ -18,7 +18,7 @@ JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecretjwtkey")
 REDIRECT_URI = "https://poststudio-pro-backend-production.up.railway.app/auth/linkedin/callback"
 
 # Use environment variable for frontend URL with fallback
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 @router.get("/linkedin/login")
 def linkedin_login():
@@ -30,13 +30,55 @@ def linkedin_login():
         f"&scope=r_liteprofile%20r_emailaddress"
         f"&state=linkedin_oauth"
     )
+    print(f"Generated LinkedIn auth URL: {linkedin_auth_url}")  # Debug log
     return RedirectResponse(linkedin_auth_url)
 
 @router.get("/linkedin/callback")
-def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db)):
+def linkedin_callback(request: Request, db: Session = Depends(get_db), code: str = None, state: str = None, error: str = None, error_description: str = None):
+    """
+    Handle LinkedIn OAuth callback with comprehensive error handling
+    """
     try:
+        # Log all query parameters for debugging
+        print(f"LinkedIn callback received:")
+        print(f"  code: {code}")
+        print(f"  state: {state}")
+        print(f"  error: {error}")
+        print(f"  error_description: {error_description}")
+        print(f"  all params: {dict(request.query_params)}")
+        
+        # Check for LinkedIn OAuth errors first
+        if error:
+            error_msg = f"LinkedIn OAuth error: {error}"
+            if error_description:
+                error_msg += f" - {error_description}"
+            
+            print(f"LinkedIn OAuth error: {error_msg}")
+            error_params = urlencode({
+                "error": "linkedin_oauth_error", 
+                "message": error_msg
+            })
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
+
+        # Check if code parameter is missing
+        if not code:
+            print("Missing code parameter in LinkedIn callback")
+            error_params = urlencode({
+                "error": "missing_code", 
+                "message": "Authorization code not received from LinkedIn"
+            })
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
+
+        # Validate state parameter
         if state != "linkedin_oauth":
-            raise HTTPException(status_code=400, detail="Invalid state parameter")
+            print(f"Invalid state parameter: {state}")
+            error_params = urlencode({
+                "error": "invalid_state", 
+                "message": "Invalid state parameter - possible CSRF attack"
+            })
+            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
+
+        print(f"Processing LinkedIn OAuth with code: {code[:10]}...")
 
         # Exchange code for access token
         token_url = "https://www.linkedin.com/oauth/v2/accessToken"
@@ -48,20 +90,32 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
             "client_secret": CLIENT_SECRET
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        
+        print("Requesting access token from LinkedIn...")
         token_res = requests.post(token_url, data=token_data, headers=headers)
+        
+        print(f"Token response status: {token_res.status_code}")
+        print(f"Token response: {token_res.text}")
 
         if token_res.status_code != 200:
-            # Redirect to frontend with error
-            error_params = urlencode({"error": "token_request_failed"})
+            error_params = urlencode({
+                "error": "token_request_failed",
+                "message": f"LinkedIn token request failed: {token_res.status_code}"
+            })
             return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         token_json = token_res.json()
         access_token = token_json.get("access_token")
 
         if not access_token:
-            # Redirect to frontend with error
-            error_params = urlencode({"error": "no_access_token"})
+            print(f"No access token in response: {token_json}")
+            error_params = urlencode({
+                "error": "no_access_token",
+                "message": "No access token received from LinkedIn"
+            })
             return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
+
+        print("Successfully obtained access token, fetching profile...")
 
         # Get user profile from LinkedIn
         profile_res = requests.get(
@@ -69,12 +123,18 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
+        print(f"Profile response status: {profile_res.status_code}")
+
         if profile_res.status_code != 200:
-            # Redirect to frontend with error
-            error_params = urlencode({"error": "profile_request_failed"})
+            print(f"Profile request failed: {profile_res.text}")
+            error_params = urlencode({
+                "error": "profile_request_failed",
+                "message": f"Failed to get LinkedIn profile: {profile_res.status_code}"
+            })
             return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         profile = profile_res.json()
+        print(f"Profile data: {profile}")
 
         # Get user email
         email_res = requests.get(
@@ -82,18 +142,29 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
+        print(f"Email response status: {email_res.status_code}")
+
         if email_res.status_code != 200:
-            # Redirect to frontend with error
-            error_params = urlencode({"error": "email_request_failed"})
+            print(f"Email request failed: {email_res.text}")
+            error_params = urlencode({
+                "error": "email_request_failed",
+                "message": f"Failed to get email from LinkedIn: {email_res.status_code}"
+            })
             return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         email_data = email_res.json()
+        print(f"Email data: {email_data}")
         
         # Safely extract email
         try:
             email = email_data["elements"][0]["handle~"]["emailAddress"]
-        except (KeyError, IndexError):
-            error_params = urlencode({"error": "email_extraction_failed"})
+            print(f"Extracted email: {email}")
+        except (KeyError, IndexError) as e:
+            print(f"Email extraction failed: {e}")
+            error_params = urlencode({
+                "error": "email_extraction_failed",
+                "message": "Could not extract email from LinkedIn response"
+            })
             return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
         # Create full name safely
@@ -105,18 +176,25 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         if not full_name:
             full_name = email.split("@")[0]
 
+        print(f"User name: {full_name}")
+
         # Create LinkedIn profile URL
-        linkedin_profile_url = f"https://www.linkedin.com/in/{profile.get('id', '')}"
+        linkedin_id = profile.get("id", "")
+        linkedin_profile_url = f"https://www.linkedin.com/in/{linkedin_id}" if linkedin_id else None
+
+        print(f"Creating/updating user with LinkedIn ID: {linkedin_id}")
 
         # Create or update user in database
         user = create_or_update_user(
             db,
-            linkedin_id=profile.get("id"),
+            linkedin_id=linkedin_id,
             name=full_name,
             email=email,
             access_token=access_token,
             linkedin_profile=linkedin_profile_url
         )
+
+        print(f"User created/updated with ID: {user.id}")
 
         # Generate JWT token
         jwt_payload = {
@@ -126,18 +204,25 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         }
         jwt_token = jwt.encode(jwt_payload, JWT_SECRET, algorithm="HS256")
 
+        print(f"Generated JWT token for user {user.id}")
+
         # Redirect to frontend with token
         params = urlencode({"token": jwt_token})
         redirect_url = f"{FRONTEND_URL}?{params}"
 
+        print(f"Redirecting to: {redirect_url}")
         return RedirectResponse(redirect_url)
 
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"LinkedIn callback error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
         # Redirect to frontend with generic error
-        error_params = urlencode({"error": "internal_server_error", "message": str(e)})
+        error_params = urlencode({
+            "error": "internal_server_error", 
+            "message": str(e)
+        })
         return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
 # Add debug endpoint to check configuration
@@ -149,4 +234,13 @@ def linkedin_config():
         "frontend_url": FRONTEND_URL,
         "has_client_secret": bool(CLIENT_SECRET and CLIENT_SECRET != "your_client_secret"),
         "has_jwt_secret": bool(JWT_SECRET and JWT_SECRET != "supersecretjwtkey")
+    })
+
+# Add test endpoint to check if the callback URL is working
+@router.get("/linkedin/test")
+def test_callback():
+    return JSONResponse({
+        "message": "LinkedIn OAuth router is working",
+        "redirect_uri": REDIRECT_URI,
+        "frontend_url": FRONTEND_URL
     })
