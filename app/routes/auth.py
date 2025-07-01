@@ -20,7 +20,7 @@ JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecretjwtkey")
 REDIRECT_URI = "https://poststudio-pro-backend-production.up.railway.app/auth/linkedin/callback"
 
 # Frontend URL, куди буде редірект з токеном
-FRONTEND_URL = "http://localhost:5173/dashboard"  # Замініть на свій реальний URL фронтенду
+FRONTEND_URL = "http://localhost:5173"  # Замініть на свій реальний URL фронтенду
 
 @router.get("/linkedin/login")
 def linkedin_login():
