@@ -18,3 +18,6 @@ def create_or_update_user(db: Session, linkedin_id: str, name: str, email: str, 
     db.commit()
     db.refresh(user)
     return user
+
+def get_user_by_id(db: Session, user_id: int):
+    return db.query(User).filter(User.id == user_id).first()
