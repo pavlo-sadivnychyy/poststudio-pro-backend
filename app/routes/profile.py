@@ -120,3 +120,8 @@ def debug_user_fields(current_user = Depends(get_current_user)):
         "available_fields": user_dict,
         "table_name": current_user.__tablename__
     }
+    
+@router.get("/debug/users")
+def debug_users(db: Session = Depends(get_db)):
+    users = db.query(User).all()
+    return {"count": len(users), "users": [{"id": u.id, "email": u.email} for u in users]}
