@@ -11,16 +11,12 @@ from app.services.user_service import create_or_update_user
 
 router = APIRouter()
 
-# Environment variables
 CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID", "your_client_id")
 CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET", "your_client_secret")
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecretjwtkey")
 
-# Hardcoded redirect URI (callback endpoint of your backend)
 REDIRECT_URI = "https://poststudio-pro-backend-production.up.railway.app/auth/linkedin/callback"
-
-# Frontend URL, куди буде редірект з токеном
-FRONTEND_URL = "http://localhost:5173"  # Замініть на свій реальний URL фронтенду
+FRONTEND_URL = "http://localhost:5173"  # заміни на URL фронтенду
 
 @router.get("/linkedin/login")
 def linkedin_login():
@@ -29,7 +25,7 @@ def linkedin_login():
         f"?response_type=code"
         f"&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
-        f"&scope=openid%20profile%20email"
+        f"&scope=r_liteprofile%20r_emailaddress"
         f"&state=linkedin_oauth"
     )
     return RedirectResponse(linkedin_auth_url)
@@ -66,8 +62,9 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
                 detail=f"Failed to get access token: {token_json}"
             )
 
+        # Отримуємо профіль користувача LinkedIn (r_liteprofile)
         profile_res = requests.get(
-            "https://api.linkedin.com/v2/userinfo",
+            "https://api.linkedin.com/v2/me",
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
@@ -79,19 +76,31 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
 
         profile = profile_res.json()
 
-        email = profile.get("email")
-        if not email:
+        # Отримуємо email користувача
+        email_res = requests.get(
+            "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        if email_res.status_code != 200:
             raise HTTPException(
                 status_code=400,
-                detail="Could not extract email from LinkedIn response"
+                detail=f"Failed to get email: {email_res.status_code} - {email_res.text}"
             )
+
+        email_data = email_res.json()
+        email = email_data["elements"][0]["handle~"]["emailAddress"]
+
+        # Формуємо посилання на LinkedIn профіль (можна кастомізувати)
+        linkedin_profile_url = f"https://www.linkedin.com/in/{profile.get('id')}"
 
         user = create_or_update_user(
             db,
-            linkedin_id=profile.get("sub"),
-            name=profile.get("name", ""),
+            linkedin_id=profile.get("id"),
+            name=profile.get("localizedFirstName") + " " + profile.get("localizedLastName"),
             email=email,
-            access_token=access_token
+            access_token=access_token,
+            linkedin_profile=linkedin_profile_url  # Додаємо нове поле
         )
 
         jwt_payload = {
@@ -101,7 +110,6 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         }
         jwt_token = jwt.encode(jwt_payload, JWT_SECRET, algorithm="HS256")
 
-        # Формуємо URL редіректу з токеном
         params = urlencode({"token": jwt_token})
         redirect_url = f"{FRONTEND_URL}?{params}"
 
@@ -112,31 +120,3 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
     except Exception as e:
         print(f"LinkedIn callback error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@router.get("/linkedin/test")
-def test_linkedin_config():
-    return JSONResponse({
-        "client_id": CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
-        "has_client_secret": bool(CLIENT_SECRET and CLIENT_SECRET != "your_client_secret"),
-        "has_jwt_secret": bool(JWT_SECRET and JWT_SECRET != "supersecretjwtkey"),
-        "client_id_length": len(CLIENT_ID) if CLIENT_ID else 0,
-        "client_secret_length": len(CLIENT_SECRET) if CLIENT_SECRET else 0
-    })
-
-@router.get("/linkedin/debug")
-def debug_linkedin_auth():
-    auth_url = (
-        f"https://www.linkedin.com/oauth/v2/authorization"
-        f"?response_type=code"
-        f"&client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&scope=r_liteprofile%20r_emailaddress"
-        f"&state=linkedin_oauth"
-    )
-    return JSONResponse({
-        "auth_url": auth_url,
-        "client_id": CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
-        "scope": "r_liteprofile r_emailaddress"
-    })
