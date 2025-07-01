@@ -22,19 +22,19 @@ REDIRECT_URI = "https://poststudio-pro-backend-production.up.railway.app/auth/li
 @router.get("/linkedin/login")
 def linkedin_login():
     """
-    Initiate LinkedIn OAuth login
+    Initiate LinkedIn OAuth login using Sign In with LinkedIn v2
     """
-    # Build LinkedIn authorization URL - don't encode the redirect_uri
+    # Use the new LinkedIn Sign In scopes
     linkedin_auth_url = (
         f"https://www.linkedin.com/oauth/v2/authorization"
         f"?response_type=code"
         f"&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
-        f"&scope=r_liteprofile%20r_emailaddress"  # Updated scopes
-        f"&state=linkedin_oauth"  # Add state for security
+        f"&scope=openid%20profile%20email"  # Updated to use OpenID Connect scopes
+        f"&state=linkedin_oauth"
     )
     
-    print(f"Generated LinkedIn URL: {linkedin_auth_url}")  # Debug
+    print(f"Generated LinkedIn URL: {linkedin_auth_url}")
     return RedirectResponse(linkedin_auth_url)
 
 @router.get("/linkedin/callback")
@@ -75,9 +75,9 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
                 detail=f"Failed to get access token: {token_json}"
             )
         
-        # Get user profile information
+        # Get user profile using OpenID Connect
         profile_res = requests.get(
-            "https://api.linkedin.com/v2/me",
+            "https://api.linkedin.com/v2/userinfo",  # Updated endpoint
             headers={"Authorization": f"Bearer {access_token}"}
         )
         
@@ -89,24 +89,9 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         
         profile = profile_res.json()
         
-        # Get user email
-        email_res = requests.get(
-            "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-        
-        if email_res.status_code != 200:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to get email: {email_res.status_code} - {email_res.text}"
-            )
-        
-        email_data = email_res.json()
-        
-        # Extract email safely
-        try:
-            email = email_data["elements"][0]["handle~"]["emailAddress"]
-        except (KeyError, IndexError):
+        # With OpenID Connect, email is included in the userinfo response
+        email = profile.get("email")
+        if not email:
             raise HTTPException(
                 status_code=400,
                 detail="Could not extract email from LinkedIn response"
@@ -115,8 +100,8 @@ def linkedin_callback(code: str, state: str = None, db: Session = Depends(get_db
         # Create or update user in database
         user = create_or_update_user(
             db,
-            linkedin_id=profile["id"],
-            name=f"{profile.get('localizedFirstName', '')} {profile.get('localizedLastName', '')}".strip(),
+            linkedin_id=profile.get("sub"),  # Use 'sub' for OpenID Connect
+            name=profile.get("name", ""),
             email=email,
             access_token=access_token
         )
@@ -158,5 +143,28 @@ def test_linkedin_config():
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "has_client_secret": bool(CLIENT_SECRET and CLIENT_SECRET != "your_client_secret"),
-        "has_jwt_secret": bool(JWT_SECRET and JWT_SECRET != "supersecretjwtkey")
+        "has_jwt_secret": bool(JWT_SECRET and JWT_SECRET != "supersecretjwtkey"),
+        "client_id_length": len(CLIENT_ID) if CLIENT_ID else 0,
+        "client_secret_length": len(CLIENT_SECRET) if CLIENT_SECRET else 0
+    })
+
+@router.get("/linkedin/debug")
+def debug_linkedin_auth():
+    """
+    Debug endpoint to check the authorization URL
+    """
+    auth_url = (
+        f"https://www.linkedin.com/oauth/v2/authorization"
+        f"?response_type=code"
+        f"&client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&scope=r_liteprofile%20r_emailaddress"
+        f"&state=linkedin_oauth"
+    )
+    
+    return JSONResponse({
+        "auth_url": auth_url,
+        "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "scope": "r_liteprofile r_emailaddress"
     })
