@@ -15,41 +15,54 @@ def create_or_update_user(
     general_notifications: bool = True,
     weekly_email_reports: bool = True
 ):
-    user = db.query(User).filter(User.linkedin_id == linkedin_id).first()
-    if user:
-        # Update existing user
-        user.access_token = access_token
-        user.name = name
-        user.email = email
-        if linkedin_profile is not None:
-            user.linkedin_profile = linkedin_profile
-        if company is not None:
-            user.company = company
-        if industry is not None:
-            user.industry = industry
-        user.auto_posting_notifications = auto_posting_notifications
-        user.general_notifications = general_notifications
-        user.weekly_email_reports = weekly_email_reports
-    else:
-        # Create new user
-        user = User(
-            linkedin_id=linkedin_id,
-            name=name,
-            email=email,
-            access_token=access_token,
-            linkedin_profile=linkedin_profile,
-            company=company,
-            industry=industry,
-            auto_posting_notifications=auto_posting_notifications,
-            general_notifications=general_notifications,
-            weekly_email_reports=weekly_email_reports
-        )
-        db.add(user)
-    
-    db.commit()
-    db.refresh(user)
-    return user
-
+    try:
+        print(f"Looking for user with LinkedIn ID: {linkedin_id}")
+        user = db.query(User).filter(User.linkedin_id == linkedin_id).first()
+        
+        if user:
+            print(f"Updating existing user: {user.id}")
+            # Update existing user
+            user.access_token = access_token
+            user.name = name
+            user.email = email
+            if linkedin_profile is not None:
+                user.linkedin_profile = linkedin_profile
+            if company is not None:
+                user.company = company
+            if industry is not None:
+                user.industry = industry
+            user.auto_posting_notifications = auto_posting_notifications
+            user.general_notifications = general_notifications
+            user.weekly_email_reports = weekly_email_reports
+        else:
+            print(f"Creating new user with LinkedIn ID: {linkedin_id}")
+            # Create new user
+            user = User(
+                linkedin_id=linkedin_id,
+                name=name,
+                email=email,
+                access_token=access_token,
+                linkedin_profile=linkedin_profile,
+                company=company,
+                industry=industry,
+                auto_posting_notifications=auto_posting_notifications,
+                general_notifications=general_notifications,
+                weekly_email_reports=weekly_email_reports
+            )
+            db.add(user)
+        
+        # Commit and refresh
+        db.commit()
+        db.refresh(user)
+        
+        print(f"User successfully created/updated: ID={user.id}, Email={user.email}")
+        return user
+        
+    except Exception as e:
+        print(f"Error in create_or_update_user: {e}")
+        db.rollback()
+        raise e
+        
 def get_user_by_id(db: Session, user_id: int):
     return db.query(User).filter(User.id == user_id).first()
 
