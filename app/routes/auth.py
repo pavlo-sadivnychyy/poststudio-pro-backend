@@ -22,12 +22,13 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 @router.get("/linkedin/login")
 def linkedin_login():
+    # Use modern OpenID Connect scopes
     linkedin_auth_url = (
         f"https://www.linkedin.com/oauth/v2/authorization"
         f"?response_type=code"
         f"&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
-        f"&scope=r_liteprofile%20r_emailaddress"
+        f"&scope=openid%20profile%20email"
         f"&state=linkedin_oauth"
     )
     print(f"Generated LinkedIn auth URL: {linkedin_auth_url}")  # Debug log
@@ -117,9 +118,9 @@ def linkedin_callback(request: Request, db: Session = Depends(get_db), code: str
 
         print("Successfully obtained access token, fetching profile...")
 
-        # Get user profile from LinkedIn
+        # Get user profile using OpenID Connect
         profile_res = requests.get(
-            "https://api.linkedin.com/v2/me",
+            "https://api.linkedin.com/v2/userinfo",
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
@@ -136,41 +137,20 @@ def linkedin_callback(request: Request, db: Session = Depends(get_db), code: str
         profile = profile_res.json()
         print(f"Profile data: {profile}")
 
-        # Get user email
-        email_res = requests.get(
-            "https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-
-        print(f"Email response status: {email_res.status_code}")
-
-        if email_res.status_code != 200:
-            print(f"Email request failed: {email_res.text}")
+        # With OpenID Connect, email is included in the userinfo response
+        email = profile.get("email")
+        if not email:
+            print("No email in OpenID Connect response")
             error_params = urlencode({
-                "error": "email_request_failed",
-                "message": f"Failed to get email from LinkedIn: {email_res.status_code}"
+                "error": "email_not_found",
+                "message": "Email not found in LinkedIn profile"
             })
             return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
 
-        email_data = email_res.json()
-        print(f"Email data: {email_data}")
-        
-        # Safely extract email
-        try:
-            email = email_data["elements"][0]["handle~"]["emailAddress"]
-            print(f"Extracted email: {email}")
-        except (KeyError, IndexError) as e:
-            print(f"Email extraction failed: {e}")
-            error_params = urlencode({
-                "error": "email_extraction_failed",
-                "message": "Could not extract email from LinkedIn response"
-            })
-            return RedirectResponse(f"{FRONTEND_URL}?{error_params}")
+        print(f"Extracted email: {email}")
 
-        # Create full name safely
-        first_name = profile.get("localizedFirstName", "")
-        last_name = profile.get("localizedLastName", "")
-        full_name = f"{first_name} {last_name}".strip()
+        # Get name from OpenID Connect response
+        full_name = profile.get("name", "")
         
         # If no name, use email prefix
         if not full_name:
@@ -178,8 +158,8 @@ def linkedin_callback(request: Request, db: Session = Depends(get_db), code: str
 
         print(f"User name: {full_name}")
 
-        # Create LinkedIn profile URL
-        linkedin_id = profile.get("id", "")
+        # Create LinkedIn profile URL using 'sub' (subject) from OpenID Connect
+        linkedin_id = profile.get("sub", "")
         linkedin_profile_url = f"https://www.linkedin.com/in/{linkedin_id}" if linkedin_id else None
 
         print(f"Creating/updating user with LinkedIn ID: {linkedin_id}")
