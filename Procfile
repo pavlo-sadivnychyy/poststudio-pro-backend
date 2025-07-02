@@ -1,2 +1,2 @@
 release: alembic upgrade head
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload --debug
+web: uvicorn main:app --host 0.0.0.0 --port $PORT

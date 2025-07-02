@@ -15,5 +15,5 @@ class ContentSettingsRequest(BaseModel):
     schedule_settings: ScheduleSettings
 
 class ContentSettingsResponse(BaseModel):
-    content_templates: Dict[str, Any]
-    schedule_settings: Dict[str, Any]
+    content_templates: Dict[str, ContentTemplate]
+    schedule_settings: ScheduleSettings

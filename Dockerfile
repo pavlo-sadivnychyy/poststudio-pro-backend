@@ -18,4 +18,4 @@ COPY . .
 EXPOSE 8000
 
 # Start command
-CMD alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload --debug
+CMD alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000
