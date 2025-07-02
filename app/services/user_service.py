@@ -143,30 +143,74 @@ def safe_load_json(s):
         return {}
 
 def get_content_settings(db: Session, user_id: int):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return None
-
-    content_templates = safe_load_json(user.content_templates)
-    schedule_settings = safe_load_json(user.schedule_settings)
-
-    return {
-        "content_templates": content_templates,
-        "schedule_settings": schedule_settings,
-    }
-
-def update_content_settings(db: Session, user_id: int, settings: dict):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return None
-
-    user.content_templates = json.dumps(settings.get("content_templates", {}))
-    user.schedule_settings = json.dumps(settings.get("schedule_settings", {}))
-
+    """Get content settings for a user"""
     try:
-        db.commit()
-        db.refresh(user)
-        return user
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+        
+        # If your User model has content_settings fields directly
+        if hasattr(user, 'content_templates') and hasattr(user, 'schedule_settings'):
+            return {
+                "content_templates": user.content_templates or {},
+                "schedule_settings": user.schedule_settings or {
+                    "timezone": "UTC-5",
+                    "optimal_times": True,
+                    "custom_times": ["09:00", "14:00", "17:00"]
+                }
+            }
+        
+        # If you store settings as JSON in a single field
+        elif hasattr(user, 'content_settings'):
+            if user.content_settings:
+                try:
+                    settings = json.loads(user.content_settings) if isinstance(user.content_settings, str) else user.content_settings
+                    return settings
+                except (json.JSONDecodeError, TypeError):
+                    logging.error(f"Failed to parse content_settings for user {user_id}")
+                    return None
+            else:
+                return None
+        
+        # If no settings found, return None
+        return None
+        
     except Exception as e:
-        db.rollback()
-        raise e
+        logging.error(f"Error getting content settings for user {user_id}: {str(e)}")
+        return None
+
+def update_content_settings(db: Session, user_id: int, settings_data: dict):
+    """Update content settings for a user"""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return None
+        
+        # If your User model has separate fields for content_templates and schedule_settings
+        if hasattr(user, 'content_templates') and hasattr(user, 'schedule_settings'):
+            if 'content_templates' in settings_data:
+                user.content_templates = settings_data['content_templates']
+            if 'schedule_settings' in settings_data:
+                user.schedule_settings = settings_data['schedule_settings']
+        
+        # If you store settings as JSON in a single field
+        elif hasattr(user, 'content_settings'):
+            user.content_settings = json.dumps(settings_data) if not isinstance(settings_data, str) else settings_data
+        
+        else:
+            # If the fields don't exist, you might need to add them to your User model
+            logging.error(f"User model doesn't have content settings fields")
+            return None
+        
+        # CRITICAL: This is probably what's missing - you need to commit the changes!
+        db.add(user)  # Mark the user object as dirty
+        db.commit()   # Save changes to database
+        db.refresh(user)  # Refresh the user object with latest data
+        
+        logging.info(f"Successfully updated content settings for user {user_id}")
+        return user
+        
+    except Exception as e:
+        logging.error(f"Error updating content settings for user {user_id}: {str(e)}")
+        db.rollback()  # Rollback in case of error
+        return None
