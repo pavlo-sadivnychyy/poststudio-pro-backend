@@ -1,4 +1,5 @@
 # app/services/user_service.py
+import logging
 from sqlalchemy.orm import Session
 from app.models.user import User
 import json
@@ -147,33 +148,38 @@ def get_content_settings(db: Session, user_id: int):
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
+            logging.error(f"User {user_id} not found")
             return None
         
-        # If your User model has content_settings fields directly
-        if hasattr(user, 'content_templates') and hasattr(user, 'schedule_settings'):
-            return {
-                "content_templates": user.content_templates or {},
-                "schedule_settings": user.schedule_settings or {
-                    "timezone": "UTC-5",
-                    "optimal_times": True,
-                    "custom_times": ["09:00", "14:00", "17:00"]
-                }
-            }
+        logging.info(f"Found user {user_id}, content_templates: {user.content_templates}, schedule_settings: {user.schedule_settings}")
         
-        # If you store settings as JSON in a single field
-        elif hasattr(user, 'content_settings'):
-            if user.content_settings:
-                try:
-                    settings = json.loads(user.content_settings) if isinstance(user.content_settings, str) else user.content_settings
-                    return settings
-                except (json.JSONDecodeError, TypeError):
-                    logging.error(f"Failed to parse content_settings for user {user_id}")
-                    return None
-            else:
-                return None
+        # Parse JSON strings from database
+        content_templates = {}
+        schedule_settings = {
+            "timezone": "UTC-5",
+            "optimal_times": True,
+            "custom_times": []
+        }
         
-        # If no settings found, return None
-        return None
+        if user.content_templates:
+            try:
+                content_templates = json.loads(user.content_templates)
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.error(f"Failed to parse content_templates for user {user_id}: {e}")
+        
+        if user.schedule_settings:
+            try:
+                schedule_settings = json.loads(user.schedule_settings)
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.error(f"Failed to parse schedule_settings for user {user_id}: {e}")
+        
+        result = {
+            "content_templates": content_templates,
+            "schedule_settings": schedule_settings
+        }
+        
+        logging.info(f"Returning settings for user {user_id}: {result}")
+        return result
         
     except Exception as e:
         logging.error(f"Error getting content settings for user {user_id}: {str(e)}")
@@ -182,34 +188,35 @@ def get_content_settings(db: Session, user_id: int):
 def update_content_settings(db: Session, user_id: int, settings_data: dict):
     """Update content settings for a user"""
     try:
+        logging.info(f"Updating content settings for user {user_id} with data: {settings_data}")
+        
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
+            logging.error(f"User {user_id} not found")
             return None
         
-        # If your User model has separate fields for content_templates and schedule_settings
-        if hasattr(user, 'content_templates') and hasattr(user, 'schedule_settings'):
-            if 'content_templates' in settings_data:
-                user.content_templates = settings_data['content_templates']
-            if 'schedule_settings' in settings_data:
-                user.schedule_settings = settings_data['schedule_settings']
+        # Convert dict to JSON strings for database storage
+        if 'content_templates' in settings_data:
+            user.content_templates = json.dumps(settings_data['content_templates'])
+            logging.info(f"Set content_templates to: {user.content_templates}")
         
-        # If you store settings as JSON in a single field
-        elif hasattr(user, 'content_settings'):
-            user.content_settings = json.dumps(settings_data) if not isinstance(settings_data, str) else settings_data
+        if 'schedule_settings' in settings_data:
+            user.schedule_settings = json.dumps(settings_data['schedule_settings'])
+            logging.info(f"Set schedule_settings to: {user.schedule_settings}")
         
-        else:
-            # If the fields don't exist, you might need to add them to your User model
-            logging.error(f"User model doesn't have content settings fields")
-            return None
-        
-        # CRITICAL: This is probably what's missing - you need to commit the changes!
-        db.commit()   # Save changes to database
-        db.refresh(user)  # Refresh the user object with latest data
+        # Save to database
+        db.commit()
+        db.refresh(user)
         
         logging.info(f"Successfully updated content settings for user {user_id}")
+        
+        # Verify the save
+        logging.info(f"Verification - content_templates in DB: {user.content_templates}")
+        logging.info(f"Verification - schedule_settings in DB: {user.schedule_settings}")
+        
         return user
         
     except Exception as e:
         logging.error(f"Error updating content settings for user {user_id}: {str(e)}")
-        db.rollback()  # Rollback in case of error
+        db.rollback()
         return None
