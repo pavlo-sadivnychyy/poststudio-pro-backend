@@ -4,7 +4,7 @@ sqlalchemy
 requests
 python-jose[cryptography]
 python-dotenv
-openai
+openai>=1.0.0
 PyJWT
 email-validator>=2.0.0
 alembic
