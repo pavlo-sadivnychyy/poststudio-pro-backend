@@ -23,7 +23,14 @@ CONTENT REQUIREMENTS:
 - Post Type: {data.post_type}
 - Target Length: Approximately {data.post_length} words
 - Include Hashtags: {'Yes' if data.include_hashtags else 'No'}
-- Include Emojis: {'Yes' if data.include_emojis else 'No'}
+- Include Emojis: {'Yes' if data.include_emojis else 'No'}"""
+
+    # Add short description context if provided
+    if data.short_description:
+        prompt += f"""
+- Additional Context: {data.short_description}"""
+
+    prompt += f"""
 
 POST TYPE GUIDELINES:
 - story: Share a personal experience with lessons learned
@@ -46,10 +53,22 @@ FORMATTING REQUIREMENTS:
 - Include a call-to-action when appropriate
 - Keep within the specified word count
 {"- Include relevant hashtags at the end" if data.include_hashtags else "- Do not include hashtags"}
-{"- Use emojis appropriately throughout the post" if data.include_emojis else "- Do not use emojis"}
+{"- Use emojis appropriately throughout the post" if data.include_emojis else "- Do not use emojis"}"""
+
+    # Add context-specific instructions if short_description is provided
+    if data.short_description:
+        prompt += f"""
+
+CONTEXT INTEGRATION:
+- Incorporate the additional context naturally into the post
+- Make the content relevant to the specific situation described
+- Use the context to add authenticity and personalization
+- Don't just mention the context - weave it into the narrative meaningfully"""
+
+    prompt += """
 
 Generate a compelling LinkedIn post that follows these guidelines."""
-
+    
     return prompt
 
 @router.post("/generate-post")
@@ -65,7 +84,7 @@ async def generate_post(data: PostGenerateRequest):
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are a professional LinkedIn content creator who writes engaging, authentic posts that drive engagement and build professional networks. Always follow the specific requirements provided."
+                    "content": "You are a professional LinkedIn content creator who writes engaging, authentic posts that drive engagement and build professional networks. Always follow the specific requirements provided. When additional context is provided, seamlessly integrate it to make the post more personal and relevant."
                 },
                 {
                     "role": "user", 
