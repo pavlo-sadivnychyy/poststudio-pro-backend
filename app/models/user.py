@@ -23,7 +23,7 @@ class User(Base):
     # === New AI automation settings ===
     auto_posting = Column(Boolean, default=True)
     auto_commenting = Column(Boolean, default=True)
-    post_frequency = Column(Integer, default=2)          # Posts per day
+    post_frequency = Column(Integer, default=2)          # Posts per 
     comment_frequency = Column(Integer, default=5)       # Comments per day
     personality_type = Column(String, default='professional')
     engagement_style = Column(String, default='thoughtful')
