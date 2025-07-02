@@ -43,17 +43,32 @@ def get_profile(current_user = Depends(get_current_user)):
     """Get current user profile"""
     return {
         "id": current_user.id,
-        "name": current_user.name,
+        "linkedin_id": current_user.linkedin_id,
         "email": current_user.email,
-        "company": getattr(current_user, "company", None),
-        "industry": getattr(current_user, "industry", None),
-        "linkedin_profile": getattr(current_user, "linkedin_profile", None),
-        "linkedin_id": getattr(current_user, "linkedin_id", None),
-        "auto_posting_notifications": getattr(current_user, "auto_posting_notifications", True),
-        "general_notifications": getattr(current_user, "general_notifications", True),
-        "weekly_email_reports": getattr(current_user, "weekly_email_reports", True),
-        "created_at": getattr(current_user, "created_at", None),
-        "updated_at": getattr(current_user, "updated_at", None),
+        "name": current_user.name,
+        "access_token": current_user.access_token,
+        "linkedin_profile": current_user.linkedin_profile,
+        "company": current_user.company,
+        "industry": current_user.industry,
+
+        "auto_posting_notifications": current_user.auto_posting_notifications,
+        "general_notifications": current_user.general_notifications,
+        "weekly_email_reports": current_user.weekly_email_reports,
+
+        "auto_posting": current_user.auto_posting,
+        "auto_commenting": current_user.auto_commenting,
+        "post_frequency": current_user.post_frequency,
+        "comment_frequency": current_user.comment_frequency,
+        "personality_type": current_user.personality_type,
+        "engagement_style": current_user.engagement_style,
+        "industries": current_user.industries,
+        "avoid_topics": current_user.avoid_topics,
+
+        "content_templates": current_user.content_templates,
+        "schedule_settings": current_user.schedule_settings,
+
+        "created_at": current_user.created_at,
+        "updated_at": current_user.updated_at,
     }
 
 @router.put("/profile")
@@ -120,7 +135,7 @@ def debug_user_fields(current_user = Depends(get_current_user)):
         "available_fields": user_dict,
         "table_name": current_user.__tablename__
     }
-    
+
 @router.get("/debug/users")
 def debug_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
