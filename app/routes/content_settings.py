@@ -24,11 +24,6 @@ def read_content_settings(
         # Return the dict directly - ContentSettingsResponse will handle it
         return ContentSettingsResponse(
             content_templates=settings.get('content_templates', {}),
-            schedule_settings=settings.get('schedule_settings', {
-                "timezone": "UTC-5",
-                "optimal_times": True,
-                "custom_times": []
-            })
         )
     except Exception as e:
         logging.error(f"Error fetching content settings for user {current_user.id}: {str(e)}")

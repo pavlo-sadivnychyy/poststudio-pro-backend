@@ -151,15 +151,10 @@ def get_content_settings(db: Session, user_id: int):
             logging.error(f"User {user_id} not found")
             return None
         
-        logging.info(f"Found user {user_id}, content_templates: {user.content_templates}, schedule_settings: {user.schedule_settings}")
+        logging.info(f"Found user {user_id}, content_templates: {user.content_templates}")
         
         # Parse JSON strings from database
         content_templates = {}
-        schedule_settings = {
-            "timezone": "UTC-5",
-            "optimal_times": True,
-            "custom_times": []
-        }
         
         if user.content_templates:
             try:
@@ -167,15 +162,8 @@ def get_content_settings(db: Session, user_id: int):
             except (json.JSONDecodeError, TypeError) as e:
                 logging.error(f"Failed to parse content_templates for user {user_id}: {e}")
         
-        if user.schedule_settings:
-            try:
-                schedule_settings = json.loads(user.schedule_settings)
-            except (json.JSONDecodeError, TypeError) as e:
-                logging.error(f"Failed to parse schedule_settings for user {user_id}: {e}")
-        
         result = {
             "content_templates": content_templates,
-            "schedule_settings": schedule_settings
         }
         
         logging.info(f"Returning settings for user {user_id}: {result}")
@@ -200,10 +188,6 @@ def update_content_settings(db: Session, user_id: int, settings_data: dict):
             user.content_templates = json.dumps(settings_data['content_templates'])
             logging.info(f"Set content_templates to: {user.content_templates}")
         
-        if 'schedule_settings' in settings_data:
-            user.schedule_settings = json.dumps(settings_data['schedule_settings'])
-            logging.info(f"Set schedule_settings to: {user.schedule_settings}")
-        
         # Save to database
         db.commit()
         db.refresh(user)
@@ -212,7 +196,6 @@ def update_content_settings(db: Session, user_id: int, settings_data: dict):
         
         # Verify the save
         logging.info(f"Verification - content_templates in DB: {user.content_templates}")
-        logging.info(f"Verification - schedule_settings in DB: {user.schedule_settings}")
         
         return user
         
