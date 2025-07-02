@@ -1,6 +1,7 @@
 # app/services/user_service.py
 from sqlalchemy.orm import Session
 from app.models.user import User
+import json
 
 def create_or_update_user(
     db: Session, 
@@ -130,4 +131,34 @@ def update_automation_settings(db: Session, user_id: int, settings):
     except Exception as e:
         db.rollback()
         print(f"Error updating automation settings: {e}")
+        raise e
+
+def get_content_settings(db: Session, user_id: int):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+
+    # Parse stored JSON strings or return defaults
+    content_templates = json.loads(user.content_templates or '{}')
+    schedule_settings = json.loads(user.schedule_settings or '{}')
+
+    return {
+        "content_templates": content_templates,
+        "schedule_settings": schedule_settings,
+    }
+
+def update_content_settings(db: Session, user_id: int, settings: dict):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+
+    user.content_templates = json.dumps(settings.get("content_templates", {}))
+    user.schedule_settings = json.dumps(settings.get("schedule_settings", {}))
+
+    try:
+        db.commit()
+        db.refresh(user)
+        return user
+    except Exception as e:
+        db.rollback()
         raise e

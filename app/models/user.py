@@ -29,6 +29,10 @@ class User(Base):
     engagement_style = Column(String, default='thoughtful')
     industries = Column(String, nullable=True)            # Comma-separated string
     avoid_topics = Column(String, nullable=True)          # Comma-separated string
+
+    # === New content settings columns ===
+    content_templates = Column(Text, nullable=True)       # JSON stored as text
+    schedule_settings = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
