@@ -203,7 +203,6 @@ def update_content_settings(db: Session, user_id: int, settings_data: dict):
             return None
         
         # CRITICAL: This is probably what's missing - you need to commit the changes!
-        db.add(user)  # Mark the user object as dirty
         db.commit()   # Save changes to database
         db.refresh(user)  # Refresh the user object with latest data
         
