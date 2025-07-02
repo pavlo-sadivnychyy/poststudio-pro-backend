@@ -133,14 +133,22 @@ def update_automation_settings(db: Session, user_id: int, settings):
         print(f"Error updating automation settings: {e}")
         raise e
 
+def safe_load_json(s):
+    if not s:
+        return {}
+    try:
+        return json.loads(s)
+    except Exception as e:
+        print(f"Error loading JSON: {e}")
+        return {}
+
 def get_content_settings(db: Session, user_id: int):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return None
 
-    # Parse stored JSON strings or return defaults
-    content_templates = json.loads(user.content_templates or '{}')
-    schedule_settings = json.loads(user.schedule_settings or '{}')
+    content_templates = safe_load_json(user.content_templates)
+    schedule_settings = safe_load_json(user.schedule_settings)
 
     return {
         "content_templates": content_templates,

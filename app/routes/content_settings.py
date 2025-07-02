@@ -14,6 +14,7 @@ def read_content_settings(
     current_user=Depends(get_current_user),
 ):
     settings = get_content_settings(db, current_user.id)
+    logging.info(f"Content settings for user {current_user.id}: {settings}")
     if settings is None:
         raise HTTPException(status_code=404, detail="User not found")
     return settings
