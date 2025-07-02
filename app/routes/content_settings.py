@@ -1,3 +1,4 @@
+import logging  # Add this import
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -11,13 +12,27 @@ router = APIRouter()
 @router.get("/content-settings", response_model=ContentSettingsResponse)
 def read_content_settings(
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(get_current_user),  # Add type annotation if available
 ):
-    settings = get_content_settings(db, current_user.id)
-    logging.info(f"Content settings for user {current_user.id}: {settings}")
-    if settings is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return settings
+    try:
+        settings = get_content_settings(db, current_user.id)
+        logging.info(f"Content settings for user {current_user.id}: {settings}")
+        
+        if settings is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Ensure the response matches the expected schema
+        return ContentSettingsResponse(
+            content_templates=settings.content_templates if hasattr(settings, 'content_templates') else {},
+            schedule_settings=settings.schedule_settings if hasattr(settings, 'schedule_settings') else {
+                "timezone": "UTC-5",
+                "optimal_times": True,
+                "custom_times": []
+            }
+        )
+    except Exception as e:
+        logging.error(f"Error fetching content settings for user {current_user.id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.put("/content-settings")
 def update_content_settings_api(
@@ -25,7 +40,11 @@ def update_content_settings_api(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    updated_user = update_content_settings(db, current_user.id, settings.dict())
-    if updated_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "Content settings updated successfully"}
+    try:
+        updated_user = update_content_settings(db, current_user.id, settings.dict())
+        if updated_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"message": "Content settings updated successfully"}
+    except Exception as e:
+        logging.error(f"Error updating content settings for user {current_user.id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update content settings")
