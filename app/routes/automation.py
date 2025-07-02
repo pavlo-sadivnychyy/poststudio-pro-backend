@@ -4,7 +4,7 @@ from typing import List
 
 from app.models.database import get_db
 from app.services.user_service import update_automation_settings
-from app.routes.user import get_current_user  # reuse your existing auth dependency
+from app.routes.profile import get_current_user  # reuse your existing auth dependency
 from app.schemas.automation import AutomationSettingsRequest, AutomationSettingsResponse
 
 router = APIRouter()
