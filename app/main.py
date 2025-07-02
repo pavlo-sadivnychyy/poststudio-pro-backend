@@ -21,4 +21,7 @@ app.include_router(automation.router, prefix="/me", tags=["automation"])
 app.include_router(content_settings.router, prefix="/me")
 
 from app.core.init_db import init_db
-init_db()
+
+@app.on_event("startup")
+async def on_startup():
+    init_db()
