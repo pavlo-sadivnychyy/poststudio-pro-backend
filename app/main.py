@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth, billing, content, linkedin, profile, calendar, automation, content_settings
+from app.routes import auth, billing, content, linkedin, profile, calendar, automation, content_settings, post_generator
 
 app = FastAPI()
 
@@ -19,6 +19,7 @@ app.include_router(profile.router, prefix="/me", tags=["profile"])
 app.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
 app.include_router(automation.router, prefix="/me", tags=["automation"])
 app.include_router(content_settings.router, prefix="/me")
+app.include_router(post_generator.router, prefix="/post-generator", tags=["post-generator"])
 
 from app.core.init_db import init_db
 
