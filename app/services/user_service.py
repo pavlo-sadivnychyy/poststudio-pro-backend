@@ -108,3 +108,26 @@ def update_user_profile(
     except Exception as e:
         db.rollback()
         raise e
+
+def update_automation_settings(db: Session, user_id: int, settings):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    
+    data = settings.dict() if hasattr(settings, "dict") else settings
+
+    for key, value in data.items():
+        if value is None:
+            continue
+        if isinstance(value, list):
+            value = ",".join(value)
+        setattr(user, key, value)
+
+    try:
+        db.commit()
+        db.refresh(user)
+        return user
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating automation settings: {e}")
+        raise e

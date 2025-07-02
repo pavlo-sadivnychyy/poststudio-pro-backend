@@ -1,4 +1,3 @@
-# app/models/user.py
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.sql import func
 from app.models.database import Base
@@ -12,8 +11,7 @@ class User(Base):
     name = Column(String)
     access_token = Column(String)
     linkedin_profile = Column(String, nullable=True)
-    
-    # Add missing columns
+
     company = Column(String, nullable=True)
     industry = Column(String, nullable=True)
     
@@ -22,6 +20,15 @@ class User(Base):
     general_notifications = Column(Boolean, default=True)
     weekly_email_reports = Column(Boolean, default=True)
     
-    # Optional: Add timestamps
+    # === New AI automation settings ===
+    auto_posting = Column(Boolean, default=True)
+    auto_commenting = Column(Boolean, default=True)
+    post_frequency = Column(Integer, default=2)          # Posts per day
+    comment_frequency = Column(Integer, default=5)       # Comments per day
+    personality_type = Column(String, default='professional')
+    engagement_style = Column(String, default='thoughtful')
+    industries = Column(String, nullable=True)            # Comma-separated string
+    avoid_topics = Column(String, nullable=True)          # Comma-separated string
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

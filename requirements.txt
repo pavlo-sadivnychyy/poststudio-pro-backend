@@ -7,3 +7,4 @@ python-dotenv
 openai
 PyJWT
 email-validator>=2.0.0
+alembic
