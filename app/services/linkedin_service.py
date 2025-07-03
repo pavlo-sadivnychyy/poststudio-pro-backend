@@ -98,7 +98,7 @@ def create_linkedin_post_new_api(access_token: str, content: str) -> dict:
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
-        "LinkedIn-Version": "202401"  # Fixed: Use correct version from screenshot
+        "LinkedIn-Version": "202507"  # Fixed: Use correct version from screenshot
     }
     
     # New API payload format
