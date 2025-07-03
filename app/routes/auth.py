@@ -23,12 +23,13 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 @router.get("/linkedin/login")
 def linkedin_login():
     # Use modern OpenID Connect scopes
+    scope = "openid profile email w_member_social"
     linkedin_auth_url = (
         f"https://www.linkedin.com/oauth/v2/authorization"
         f"?response_type=code"
         f"&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
-        f"&scope=openid%20profile%20email"
+        f"&scope={scope}"
         f"&state=linkedin_oauth"
     )
     print(f"Generated LinkedIn auth URL: {linkedin_auth_url}")  # Debug log
