@@ -191,6 +191,144 @@ def force_test_posting(
         logging.error(traceback.format_exc())
         return {"error": str(e)}
 
+@router.post("/auto-posting/add-test-schedule")
+def add_test_schedule(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add today's date to schedule for testing"""
+    try:
+        from datetime import datetime, timedelta
+        
+        # Get current time + 5 minutes for testing
+        now = datetime.now()
+        test_time = now + timedelta(minutes=5)
+        today_str = now.strftime('%Y-%m-%d')
+        test_time_str = test_time.strftime('%H:%M')
+        
+        # Get current schedule or create new one
+        if current_user.schedule_settings:
+            schedule = json.loads(current_user.schedule_settings)
+        else:
+            schedule = {"mode": "manual", "timezone": "UTC+2", "settings": {"selectedDates": {}}}
+        
+        # Add today's date with test time
+        if "selectedDates" not in schedule.get("settings", {}):
+            schedule["settings"]["selectedDates"] = {}
+        
+        schedule["settings"]["selectedDates"][today_str] = [test_time_str]
+        
+        # Update user
+        current_user.schedule_settings = json.dumps(schedule)
+        db.commit()
+        
+        return {
+            "message": f"Added test schedule for today ({today_str}) at {test_time_str}",
+            "schedule": schedule,
+            "note": "The scheduler will check this in the next 15 minutes"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error adding test schedule: {str(e)}")
+        raise HTTPException(500, f"Failed to add test schedule: {str(e)}")
+
+@router.get("/auto-posting/scheduler-status")
+def get_scheduler_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get current scheduler status"""
+    try:
+        from app.core.scheduler import get_scheduler_status
+        from datetime import datetime
+        
+        status = get_scheduler_status()
+        
+        # Add user-specific info
+        status["user_auto_posting_enabled"] = current_user.auto_posting
+        status["total_active_users"] = db.query(User).filter(User.auto_posting == True).count()
+        status["current_time"] = datetime.now().isoformat()
+        
+        return status
+        
+    except Exception as e:
+        logging.error(f"Error getting scheduler status: {str(e)}")
+        return {"error": str(e)}
+
+@router.get("/auto-posting/schedule-debug")
+def debug_schedule_timing(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Debug schedule timing to see why posts aren't being scheduled"""
+    try:
+        from datetime import datetime, timezone as dt_timezone
+        from app.services.auto_posting_service import should_post_now
+        
+        if not current_user.schedule_settings:
+            return {"error": "No schedule settings found"}
+        
+        schedule = json.loads(current_user.schedule_settings)
+        current_time = datetime.now(dt_timezone.utc)
+        
+        debug_info = {
+            "current_time_utc": current_time.isoformat(),
+            "current_time_local": current_time.strftime('%Y-%m-%d %H:%M'),
+            "schedule_mode": schedule.get('mode'),
+            "schedule_timezone": schedule.get('timezone'),
+            "should_post_now": should_post_now(current_user),
+            "schedule_analysis": {}
+        }
+        
+        if schedule.get('mode') == 'manual':
+            selected_dates = schedule.get('settings', {}).get('selectedDates', {})
+            current_date = current_time.strftime('%Y-%m-%d')
+            
+            debug_info["schedule_analysis"] = {
+                "current_date": current_date,
+                "scheduled_dates": list(selected_dates.keys()),
+                "has_today": current_date in selected_dates,
+                "today_times": selected_dates.get(current_date, []),
+                "all_scheduled_times": selected_dates
+            }
+            
+            if current_date in selected_dates:
+                current_time_str = current_time.strftime('%H:%M')
+                for scheduled_time in selected_dates[current_date]:
+                    scheduled_hour, scheduled_minute = scheduled_time.split(':')
+                    scheduled_total_minutes = int(scheduled_hour) * 60 + int(scheduled_minute)
+                    current_total_minutes = current_time.hour * 60 + current_time.minute
+                    time_diff = abs(current_total_minutes - scheduled_total_minutes)
+                    
+                    debug_info["schedule_analysis"][f"time_check_{scheduled_time}"] = {
+                        "scheduled_time": scheduled_time,
+                        "current_time": current_time_str,
+                        "time_difference_minutes": time_diff,
+                        "within_15_min_window": time_diff <= 15
+                    }
+        
+        elif schedule.get('mode') == 'daily':
+            daily_time = schedule.get('settings', {}).get('dailyTime', '09:00')
+            current_hour_minute = current_time.strftime('%H:%M')
+            
+            scheduled_hour, scheduled_minute = daily_time.split(':')
+            scheduled_total_minutes = int(scheduled_hour) * 60 + int(scheduled_minute)
+            current_total_minutes = current_time.hour * 60 + current_time.minute
+            time_diff = abs(current_total_minutes - scheduled_total_minutes)
+            
+            debug_info["schedule_analysis"] = {
+                "daily_time": daily_time,
+                "current_time": current_hour_minute,
+                "time_difference_minutes": time_diff,
+                "within_15_min_window": time_diff <= 15
+            }
+        
+        return debug_info
+        
+    except Exception as e:
+        logging.error(f"Error debugging schedule: {str(e)}")
+        return {"error": str(e)}
+
 @router.get("/auto-posting/linkedin-debug")
 def comprehensive_linkedin_debug(
     db: Session = Depends(get_db),
