@@ -1,3 +1,4 @@
+# app/models/user.py
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from app.models.database import Base
@@ -23,16 +24,16 @@ class User(Base):
     # === New AI automation settings ===
     auto_posting = Column(Boolean, default=True)
     auto_commenting = Column(Boolean, default=True)
-    post_frequency = Column(Integer, default=2)          # Posts per 
+    post_frequency = Column(Integer, default=2)          # Posts per day
     comment_frequency = Column(Integer, default=5)       # Comments per day
     personality_type = Column(String, default='professional')
     engagement_style = Column(String, default='thoughtful')
     industries = Column(String, nullable=True)            # Comma-separated string
     avoid_topics = Column(String, nullable=True)          # Comma-separated string
 
-    # === New content settings columns ===
+    # === Content and Schedule settings ===
     content_templates = Column(Text, nullable=True)       # JSON stored as text
-    schedule_settings = Column(Text, nullable=True)
+    schedule_settings = Column(Text, nullable=True)       # JSON stored as text - NEW FIELD
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

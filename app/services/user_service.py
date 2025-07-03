@@ -203,3 +203,99 @@ def update_content_settings(db: Session, user_id: int, settings_data: dict):
         logging.error(f"Error updating content settings for user {user_id}: {str(e)}")
         db.rollback()
         return None
+
+def get_schedule_settings(db: Session, user_id: int):
+    """Get schedule settings for a user"""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logging.error(f"User {user_id} not found")
+            return None
+        
+        logging.info(f"Found user {user_id}, schedule_settings: {user.schedule_settings}")
+        
+        # Parse JSON string from database
+        if user.schedule_settings:
+            try:
+                schedule_data = json.loads(user.schedule_settings)
+                logging.info(f"Returning schedule settings for user {user_id}: {schedule_data}")
+                return schedule_data
+            except (json.JSONDecodeError, TypeError) as e:
+                logging.error(f"Failed to parse schedule_settings for user {user_id}: {e}")
+                return None
+        else:
+            # Return default settings if none exist
+            default_settings = {
+                "mode": "daily",
+                "timezone": "UTC+2",
+                "settings": {
+                    "dailyTime": "09:00"
+                }
+            }
+            logging.info(f"No schedule settings found, returning defaults for user {user_id}")
+            return default_settings
+        
+    except Exception as e:
+        logging.error(f"Error getting schedule settings for user {user_id}: {str(e)}")
+        return None
+
+def update_schedule_settings(db: Session, user_id: int, schedule_data: dict):
+    """Update schedule settings for a user"""
+    try:
+        logging.info(f"Updating schedule settings for user {user_id} with data: {schedule_data}")
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logging.error(f"User {user_id} not found")
+            return None
+        
+        # Convert dict to JSON string for database storage
+        user.schedule_settings = json.dumps(schedule_data)
+        logging.info(f"Set schedule_settings to: {user.schedule_settings}")
+        
+        # Save to database
+        db.commit()
+        db.refresh(user)
+        
+        logging.info(f"Successfully updated schedule settings for user {user_id}")
+        
+        # Generate summary for response
+        summary = generate_schedule_summary(schedule_data)
+        
+        return {
+            "user": user,
+            "summary": summary
+        }
+        
+    except Exception as e:
+        logging.error(f"Error updating schedule settings for user {user_id}: {str(e)}")
+        db.rollback()
+        return None
+
+def generate_schedule_summary(schedule_data: dict) -> str:
+    """Generate a human-readable summary of the schedule"""
+    try:
+        mode = schedule_data.get("mode", "unknown")
+        timezone = schedule_data.get("timezone", "UTC")
+        settings = schedule_data.get("settings", {})
+        
+        if mode == "daily":
+            daily_time = settings.get("dailyTime", "09:00")
+            return f"Daily posting enabled at {daily_time} ({timezone})"
+        
+        elif mode == "manual":
+            selected_dates = settings.get("selectedDates", {})
+            total_days = len(selected_dates)
+            total_posts = sum(len(times) for times in selected_dates.values())
+            
+            if total_posts == 0:
+                return "No posts scheduled"
+            
+            return f"{total_posts} posts scheduled across {total_days} days ({timezone})"
+        
+        else:
+            return "Schedule configuration saved"
+            
+    except Exception as e:
+        logging.error(f"Error generating schedule summary: {e}")
+        return "Schedule settings updated"
