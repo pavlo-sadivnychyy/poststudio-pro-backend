@@ -145,11 +145,23 @@ def force_test_posting(
         if not current_user.access_token:
             return {"error": "No LinkedIn access token found"}
         
-        # Generate test content
+        # Generate test content - fix tone validation
+        valid_tone = "Professional"  # Default to valid tone
+        if current_user.personality_type:
+            tone_mapping = {
+                "professional": "Professional",
+                "casual": "Casual & Friendly", 
+                "friendly": "Casual & Friendly",
+                "thought_leader": "Thought Leader",
+                "storytelling": "Storytelling",
+                "motivational": "Motivational"
+            }
+            valid_tone = tone_mapping.get(current_user.personality_type.lower(), "Professional")
+        
         test_request = PostGenerateRequest(
             topic="Test Post from AI Automation",
             industry=current_user.industry or "Technology",
-            tone=current_user.personality_type or "professional",
+            tone=valid_tone,
             post_type="story",
             post_length=100,
             include_hashtags=True,

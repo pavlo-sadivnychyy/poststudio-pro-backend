@@ -126,7 +126,7 @@ def get_content_template_settings(user: User) -> dict:
                 "story": {
                     "topic": "Professional Growth",
                     "industry": user.industry or "General",
-                    "tone": user.personality_type or "professional",
+                    "tone": "Professional",  # Use valid tone
                     "post_type": "story",
                     "post_length": 150,
                     "include_hashtags": True,
@@ -136,6 +136,21 @@ def get_content_template_settings(user: User) -> dict:
     except Exception as e:
         logging.error(f"Error parsing content templates for user {user.id}: {str(e)}")
         return {}
+
+def get_valid_tone(user_tone: str) -> str:
+    """Convert user personality type to valid PostGenerateRequest tone"""
+    if not user_tone:
+        return "Professional"
+    
+    tone_mapping = {
+        "professional": "Professional",
+        "casual": "Casual & Friendly", 
+        "friendly": "Casual & Friendly",
+        "thought_leader": "Thought Leader",
+        "storytelling": "Storytelling",
+        "motivational": "Motivational"
+    }
+    return tone_mapping.get(user_tone.lower(), "Professional")
 
 def run_auto_posting(db: Session):
     """Main function to run auto-posting for all enabled users"""
@@ -162,11 +177,14 @@ def run_auto_posting(db: Session):
                 template_name = next(iter(content_templates.keys()), "story")
                 template = content_templates[template_name]
                 
-                # Create post request from template
+                # Create post request from template with valid tone
+                raw_tone = template.get("tone", user.personality_type or "professional")
+                valid_tone = get_valid_tone(raw_tone)
+                
                 post_request = PostGenerateRequest(
                     topic=template.get("topic", "Professional Growth"),
                     industry=template.get("industry", user.industry or "General"),
-                    tone=template.get("tone", user.personality_type or "professional"),
+                    tone=valid_tone,
                     post_type=template.get("post_type", "story"),
                     post_length=template.get("post_length", 150),
                     include_hashtags=template.get("include_hashtags", True),
