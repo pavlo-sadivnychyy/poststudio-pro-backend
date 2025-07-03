@@ -3,7 +3,37 @@ import logging
 import json
 
 def get_linkedin_profile_info(access_token: str) -> dict:
-    """Get LinkedIn profile information to retrieve the person URN"""
+    """Get LinkedIn profile information using the correct API"""
+    # Try the OpenID Connect endpoint first (more reliable)
+    url = "https://api.linkedin.com/v2/userinfo"
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        logging.info("🔍 Getting LinkedIn profile info via userinfo endpoint...")
+        response = requests.get(url, headers=headers)
+        
+        logging.info(f"Profile API response: {response.status_code}")
+        logging.info(f"Profile API response text: {response.text}")
+        
+        if response.status_code == 200:
+            profile_data = response.json()
+            logging.info(f"✅ LinkedIn profile retrieved via userinfo: {profile_data}")
+            return profile_data
+        else:
+            # Fallback to v2/people/~ endpoint
+            logging.info("Trying fallback v2/people/~ endpoint...")
+            return get_linkedin_profile_fallback(access_token)
+            
+    except Exception as e:
+        logging.error(f"❌ Exception getting LinkedIn profile: {e}")
+        return get_linkedin_profile_fallback(access_token)
+
+def get_linkedin_profile_fallback(access_token: str) -> dict:
+    """Fallback method to get LinkedIn profile"""
     url = "https://api.linkedin.com/v2/people/~"
     
     headers = {
@@ -12,32 +42,22 @@ def get_linkedin_profile_info(access_token: str) -> dict:
     }
     
     try:
-        logging.info("🔍 Getting LinkedIn profile info...")
         response = requests.get(url, headers=headers)
-        
-        logging.info(f"Profile API response: {response.status_code}")
-        logging.info(f"Profile API response text: {response.text}")
+        logging.info(f"Fallback profile API response: {response.status_code}")
+        logging.info(f"Fallback profile API response text: {response.text}")
         
         if response.status_code == 200:
-            profile_data = response.json()
-            logging.info(f"✅ LinkedIn profile retrieved: {profile_data}")
-            return profile_data
-        elif response.status_code == 401:
-            logging.error("❌ LinkedIn API returned 401 - Access token is invalid or expired")
-            return {}
-        elif response.status_code == 403:
-            logging.error("❌ LinkedIn API returned 403 - Missing required permissions")
-            return {}
+            return response.json()
         else:
-            logging.error(f"❌ Failed to get LinkedIn profile: {response.status_code} {response.text}")
+            logging.error(f"❌ Fallback profile failed: {response.status_code} {response.text}")
             return {}
     except Exception as e:
-        logging.error(f"❌ Exception getting LinkedIn profile: {e}")
+        logging.error(f"❌ Exception in fallback profile: {e}")
         return {}
 
 def check_linkedin_permissions(access_token: str) -> dict:
-    """Check what permissions the current token has"""
-    url = "https://api.linkedin.com/v2/me"
+    """Check LinkedIn permissions using userinfo endpoint"""
+    url = "https://api.linkedin.com/v2/userinfo"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -55,46 +75,55 @@ def check_linkedin_permissions(access_token: str) -> dict:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-def try_simple_text_post(access_token: str, content: str) -> dict:
-    """Try the simplest possible LinkedIn post to test permissions"""
+def create_linkedin_post_new_api(access_token: str, content: str) -> dict:
+    """Create LinkedIn post using the new REST API endpoints"""
     
-    # First get profile
+    # First get profile info
     profile_info = get_linkedin_profile_info(access_token)
-    if not profile_info or 'id' not in profile_info:
+    if not profile_info:
         return {"success": False, "error": "Could not get LinkedIn profile"}
     
-    person_urn = f"urn:li:person:{profile_info['id']}"
+    # Extract person ID from profile
+    person_id = profile_info.get("sub") or profile_info.get("id")
+    if not person_id:
+        return {"success": False, "error": "Could not get person ID from profile"}
     
-    # Try the v2/shares API (simpler format)
-    url = "https://api.linkedin.com/v2/shares"
+    person_urn = f"urn:li:person:{person_id}"
+    logging.info(f"👤 Using person URN: {person_urn}")
+    
+    # Use the new REST API for posting
+    url = "https://api.linkedin.com/rest/posts"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0"
+        "X-Restli-Protocol-Version": "2.0.0",
+        "LinkedIn-Version": "202401"  # Use the API version from your screenshot
     }
     
-    # Simplest possible payload
+    # New API payload format
     payload = {
-        "owner": person_urn,
-        "text": {
-            "text": content
-        },
+        "author": person_urn,
+        "commentary": content,
+        "visibility": "PUBLIC",
         "distribution": {
-            "linkedInDistributionTarget": {}
-        }
+            "feedDistribution": "MAIN_FEED",
+            "targetEntities": [],
+            "thirdPartyDistributionChannels": []
+        },
+        "lifecycleState": "PUBLISHED"
     }
     
     try:
-        logging.info("📤 Trying simple text post...")
+        logging.info("📤 Attempting to post using new REST API...")
         logging.info(f"URL: {url}")
         logging.info(f"Headers: {headers}")
         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
         
         response = requests.post(url, headers=headers, json=payload)
         
-        logging.info(f"Simple post response: {response.status_code}")
-        logging.info(f"Simple post response text: {response.text}")
+        logging.info(f"REST API response: {response.status_code}")
+        logging.info(f"REST API response text: {response.text}")
         
         result = {
             "success": response.status_code in [200, 201],
@@ -105,7 +134,8 @@ def try_simple_text_post(access_token: str, content: str) -> dict:
         }
         
         if response.status_code in [200, 201]:
-            logging.info("✅ Simple LinkedIn post SUCCESS!")
+            logging.info("✅ LinkedIn post SUCCESS with new REST API!")
+            result["post_id"] = response.json().get("id") if response.text else None
         elif response.status_code == 401:
             result["error"] = "Access token invalid or expired"
         elif response.status_code == 403:
@@ -118,27 +148,92 @@ def try_simple_text_post(access_token: str, content: str) -> dict:
         return result
         
     except Exception as e:
-        logging.error(f"❌ Exception in simple post: {e}")
+        logging.error(f"❌ Exception in new REST API: {e}")
+        return {"success": False, "error": str(e)}
+
+def create_linkedin_post_legacy_api(access_token: str, content: str) -> dict:
+    """Fallback to legacy ugcPosts API"""
+    
+    profile_info = get_linkedin_profile_info(access_token)
+    if not profile_info:
+        return {"success": False, "error": "Could not get LinkedIn profile"}
+    
+    person_id = profile_info.get("sub") or profile_info.get("id")
+    if not person_id:
+        return {"success": False, "error": "Could not get person ID"}
+    
+    person_urn = f"urn:li:person:{person_id}"
+    
+    url = "https://api.linkedin.com/v2/ugcPosts"
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "X-Restli-Protocol-Version": "2.0.0"
+    }
+    
+    payload = {
+        "author": person_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {
+                    "text": content
+                },
+                "shareMediaCategory": "NONE"
+            }
+        },
+        "visibility": {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+        }
+    }
+    
+    try:
+        logging.info("📤 Attempting legacy ugcPosts API...")
+        response = requests.post(url, headers=headers, json=payload)
+        
+        logging.info(f"Legacy API response: {response.status_code}")
+        logging.info(f"Legacy API response text: {response.text}")
+        
+        return {
+            "success": response.status_code == 201,
+            "status_code": response.status_code,
+            "response_text": response.text,
+            "url_used": url
+        }
+        
+    except Exception as e:
+        logging.error(f"❌ Exception in legacy API: {e}")
         return {"success": False, "error": str(e)}
 
 def post_linkedin_content(access_token: str, content: str) -> bool:
-    """Main posting function with enhanced debugging"""
+    """Main posting function - tries new API first, then legacy"""
     
-    logging.info("🚀 Starting LinkedIn post with enhanced debugging...")
+    logging.info("🚀 Starting LinkedIn post with updated API endpoints...")
     
-    # Step 1: Check permissions
-    permissions = check_linkedin_permissions(access_token)
-    logging.info(f"Permission check result: {permissions}")
+    # Try new REST API first
+    result = create_linkedin_post_new_api(access_token, content)
     
-    # Step 2: Try simple post
-    result = try_simple_text_post(access_token, content)
+    if result.get("success"):
+        logging.info("✅ SUCCESS with new REST API!")
+        return True
     
-    # Log full debugging info
-    logging.info("=== LINKEDIN POST DEBUG INFO ===")
-    logging.info(f"Success: {result.get('success', False)}")
-    logging.info(f"Status Code: {result.get('status_code')}")
-    logging.info(f"Error: {result.get('error', 'None')}")
-    logging.info(f"Response: {result.get('response_text', 'None')}")
-    logging.info("===============================")
+    logging.info("❌ New REST API failed, trying legacy API...")
     
-    return result.get('success', False)
+    # Fallback to legacy API
+    legacy_result = create_linkedin_post_legacy_api(access_token, content)
+    
+    if legacy_result.get("success"):
+        logging.info("✅ SUCCESS with legacy API!")
+        return True
+    
+    # Both failed
+    logging.error("❌ Both new and legacy APIs failed")
+    logging.error(f"New API result: {result}")
+    logging.error(f"Legacy API result: {legacy_result}")
+    
+    return False
+
+def try_simple_text_post(access_token: str, content: str) -> dict:
+    """Try simple text post for debugging"""
+    return create_linkedin_post_new_api(access_token, content)
