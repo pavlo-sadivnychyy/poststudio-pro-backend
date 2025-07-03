@@ -232,6 +232,91 @@ def add_test_schedule(
         logging.error(f"Error adding test schedule: {str(e)}")
         raise HTTPException(500, f"Failed to add test schedule: {str(e)}")
 
+@router.get("/auto-posting/timezone-debug")
+def debug_timezone_calculation(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Debug timezone calculations to see why posting isn't happening"""
+    try:
+        from datetime import datetime, timezone as dt_timezone, timedelta
+        
+        if not current_user.schedule_settings:
+            return {"error": "No schedule settings found"}
+        
+        schedule = json.loads(current_user.schedule_settings)
+        current_utc = datetime.now(dt_timezone.utc)
+        
+        # Parse user timezone
+        user_timezone = schedule.get('timezone', 'UTC+0')
+        
+        def parse_timezone_offset(timezone_str):
+            if timezone_str == 'UTC+0' or timezone_str == 'UTC':
+                return timedelta(0)
+            if timezone_str.startswith('UTC+'):
+                hours = int(timezone_str[4:])
+                return timedelta(hours=hours)
+            elif timezone_str.startswith('UTC-'):
+                hours = int(timezone_str[4:])
+                return timedelta(hours=-hours)
+            else:
+                return timedelta(0)
+        
+        timezone_offset = parse_timezone_offset(user_timezone)
+        user_local_time = current_utc + timezone_offset
+        
+        debug_info = {
+            "current_utc_time": current_utc.strftime('%Y-%m-%d %H:%M:%S UTC'),
+            "user_timezone": user_timezone,
+            "timezone_offset_hours": timezone_offset.total_seconds() / 3600,
+            "user_local_time": user_local_time.strftime('%Y-%m-%d %H:%M:%S'),
+            "user_local_date": user_local_time.strftime('%Y-%m-%d'),
+            "user_local_time_only": user_local_time.strftime('%H:%M'),
+            "schedule_mode": schedule.get('mode'),
+            "schedule_check": {}
+        }
+        
+        if schedule.get('mode') == 'manual':
+            selected_dates = schedule.get('settings', {}).get('selectedDates', {})
+            current_date = user_local_time.strftime('%Y-%m-%d')
+            current_time_str = user_local_time.strftime('%H:%M')
+            
+            debug_info["schedule_check"] = {
+                "selected_dates": selected_dates,
+                "today_in_schedule": current_date in selected_dates,
+                "today_scheduled_times": selected_dates.get(current_date, []),
+                "current_time_matches": current_time_str in selected_dates.get(current_date, []),
+                "should_post_now": current_time_str in selected_dates.get(current_date, [])
+            }
+        
+        return debug_info
+        
+    except Exception as e:
+        logging.error(f"Error in timezone debug: {str(e)}")
+        return {"error": str(e)}
+
+@router.post("/auto-posting/force-schedule-check")
+def force_schedule_check(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Force check if user should post now (for testing)"""
+    try:
+        from app.core.scheduler import should_user_post_now
+        
+        should_post = should_user_post_now(current_user)
+        
+        return {
+            "user_id": current_user.id,
+            "auto_posting_enabled": current_user.auto_posting,
+            "should_post_now": should_post,
+            "message": "Check complete - see server logs for detailed timing info"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error in force schedule check: {str(e)}")
+        return {"error": str(e)}
+
 @router.get("/auto-posting/scheduler-status")
 def get_scheduler_status(
     db: Session = Depends(get_db),

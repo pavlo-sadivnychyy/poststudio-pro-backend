@@ -75,38 +75,76 @@ def should_user_post_now(user) -> bool:
         schedule = json.loads(user.schedule_settings)
         current_time = datetime.now(timezone.utc)
         
+        # Get user's timezone offset
+        user_timezone = schedule.get('timezone', 'UTC+0')
+        timezone_offset = parse_timezone_offset(user_timezone)
+        
+        # Convert current UTC time to user's timezone
+        user_current_time = current_time.replace(tzinfo=timezone.utc) + timezone_offset
+        
+        logger.info(f"🕐 User {user.id} timezone check:")
+        logger.info(f"   Current UTC time: {current_time.strftime('%H:%M')}")
+        logger.info(f"   User timezone: {user_timezone}")
+        logger.info(f"   User local time: {user_current_time.strftime('%H:%M')}")
+        
         if schedule.get('mode') == 'daily':
             daily_time = schedule.get('settings', {}).get('dailyTime', '09:00')
-            current_hour_minute = current_time.strftime('%H:%M')
+            current_hour_minute = user_current_time.strftime('%H:%M')
             
             # Check if current time matches daily time (within 1 minute)
-            scheduled_hour, scheduled_minute = daily_time.split(':')
-            current_hour = current_time.hour
-            current_minute = current_time.minute
-            
-            if (int(scheduled_hour) == current_hour and 
-                int(scheduled_minute) == current_minute):
+            if daily_time == current_hour_minute:
                 logger.info(f"✅ Daily post time match for user {user.id}: {daily_time}")
                 return True
+            else:
+                logger.debug(f"❌ Daily time mismatch for user {user.id}: scheduled={daily_time}, current={current_hour_minute}")
                 
         elif schedule.get('mode') == 'manual':
             selected_dates = schedule.get('settings', {}).get('selectedDates', {})
-            current_date = current_time.strftime('%Y-%m-%d')
-            current_hour_minute = current_time.strftime('%H:%M')
+            current_date = user_current_time.strftime('%Y-%m-%d')
+            current_hour_minute = user_current_time.strftime('%H:%M')
+            
+            logger.info(f"📅 Manual schedule check for user {user.id}:")
+            logger.info(f"   Current date: {current_date}")
+            logger.info(f"   Current time: {current_hour_minute}")
+            logger.info(f"   Scheduled dates: {list(selected_dates.keys())}")
             
             if current_date in selected_dates:
                 scheduled_times = selected_dates[current_date]
+                logger.info(f"   Today's scheduled times: {scheduled_times}")
                 
                 for scheduled_time in scheduled_times:
                     if scheduled_time == current_hour_minute:
                         logger.info(f"✅ Manual post time match for user {user.id}: {current_date} {scheduled_time}")
                         return True
+                    else:
+                        logger.debug(f"❌ Time mismatch: scheduled={scheduled_time}, current={current_hour_minute}")
+            else:
+                logger.info(f"❌ No schedule for today ({current_date})")
             
     except Exception as e:
         logger.error(f"Error checking schedule for user {user.id}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
     
     return False
+
+def parse_timezone_offset(timezone_str):
+    """Parse timezone string like 'UTC+2' into timedelta"""
+    from datetime import timedelta
+    
+    if timezone_str == 'UTC+0' or timezone_str == 'UTC':
+        return timedelta(0)
+    
+    if timezone_str.startswith('UTC+'):
+        hours = int(timezone_str[4:])
+        return timedelta(hours=hours)
+    elif timezone_str.startswith('UTC-'):
+        hours = int(timezone_str[4:])
+        return timedelta(hours=-hours)
+    else:
+        logger.warning(f"Unknown timezone format: {timezone_str}, defaulting to UTC")
+        return timedelta(0)
 
 def post_for_user(db: Session, user):
     """Post content for a specific user"""
