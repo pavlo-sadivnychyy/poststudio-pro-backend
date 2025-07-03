@@ -191,24 +191,51 @@ def force_test_posting(
         logging.error(traceback.format_exc())
         return {"error": str(e)}
 
-@router.get("/auto-posting/linkedin-profile-test")
-def test_linkedin_profile(
+@router.get("/auto-posting/linkedin-debug")
+def comprehensive_linkedin_debug(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Test LinkedIn API access"""
+    """Comprehensive LinkedIn API debugging"""
     try:
-        from app.services.linkedin_service import get_linkedin_profile_info
+        from app.services.linkedin_service import (
+            get_linkedin_profile_info, 
+            check_linkedin_permissions,
+            try_simple_text_post
+        )
         
         if not current_user.access_token:
             return {"error": "No access token"}
         
-        profile = get_linkedin_profile_info(current_user.access_token)
-        return {
-            "success": bool(profile),
-            "profile": profile,
-            "person_urn": f"urn:li:person:{profile.get('id')}" if profile else None
+        debug_results = {}
+        
+        # Test 1: Basic profile access
+        debug_results["profile_test"] = {
+            "description": "Testing basic profile access",
         }
+        profile = get_linkedin_profile_info(current_user.access_token)
+        debug_results["profile_test"]["success"] = bool(profile)
+        debug_results["profile_test"]["profile_data"] = profile
+        
+        # Test 2: Permission check
+        debug_results["permissions_test"] = {
+            "description": "Checking token permissions",
+        }
+        permissions = check_linkedin_permissions(current_user.access_token)
+        debug_results["permissions_test"]["result"] = permissions
+        
+        # Test 3: Simple post attempt
+        debug_results["simple_post_test"] = {
+            "description": "Attempting simple test post",
+        }
+        test_content = "🤖 Test post from AI automation system - please ignore!"
+        post_result = try_simple_text_post(current_user.access_token, test_content)
+        debug_results["simple_post_test"]["result"] = post_result
+        
+        return debug_results
         
     except Exception as e:
+        logging.error(f"LinkedIn debug error: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
         return {"error": str(e)}

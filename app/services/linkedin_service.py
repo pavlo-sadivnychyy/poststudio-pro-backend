@@ -22,6 +22,12 @@ def get_linkedin_profile_info(access_token: str) -> dict:
             profile_data = response.json()
             logging.info(f"✅ LinkedIn profile retrieved: {profile_data}")
             return profile_data
+        elif response.status_code == 401:
+            logging.error("❌ LinkedIn API returned 401 - Access token is invalid or expired")
+            return {}
+        elif response.status_code == 403:
+            logging.error("❌ LinkedIn API returned 403 - Missing required permissions")
+            return {}
         else:
             logging.error(f"❌ Failed to get LinkedIn profile: {response.status_code} {response.text}")
             return {}
@@ -29,31 +35,37 @@ def get_linkedin_profile_info(access_token: str) -> dict:
         logging.error(f"❌ Exception getting LinkedIn profile: {e}")
         return {}
 
-def post_linkedin_content(access_token: str, content: str) -> bool:
-    """Post the given content to LinkedIn using the user's access token"""
+def check_linkedin_permissions(access_token: str) -> dict:
+    """Check what permissions the current token has"""
+    url = "https://api.linkedin.com/v2/me"
     
-    # First, get the user's profile to get their person URN
-    logging.info("📝 Starting LinkedIn post process...")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
     
+    try:
+        response = requests.get(url, headers=headers)
+        logging.info(f"Permissions check: {response.status_code}")
+        
+        if response.status_code == 200:
+            return {"status": "valid", "data": response.json()}
+        else:
+            return {"status": "invalid", "error": response.text}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+def try_simple_text_post(access_token: str, content: str) -> dict:
+    """Try the simplest possible LinkedIn post to test permissions"""
+    
+    # First get profile
     profile_info = get_linkedin_profile_info(access_token)
     if not profile_info or 'id' not in profile_info:
-        logging.error("❌ Failed to get LinkedIn profile information")
-        return False
+        return {"success": False, "error": "Could not get LinkedIn profile"}
     
     person_urn = f"urn:li:person:{profile_info['id']}"
-    logging.info(f"👤 Using person URN: {person_urn}")
     
-    # Try the newer LinkedIn API first (v2/shares)
-    success = try_shares_api(access_token, person_urn, content)
-    if success:
-        return True
-    
-    # Fallback to ugcPosts API
-    logging.info("🔄 Trying ugcPosts API as fallback...")
-    return try_ugc_posts_api(access_token, person_urn, content)
-
-def try_shares_api(access_token: str, person_urn: str, content: str) -> bool:
-    """Try posting using the v2/shares API"""
+    # Try the v2/shares API (simpler format)
     url = "https://api.linkedin.com/v2/shares"
     
     headers = {
@@ -62,6 +74,7 @@ def try_shares_api(access_token: str, person_urn: str, content: str) -> bool:
         "X-Restli-Protocol-Version": "2.0.0"
     }
     
+    # Simplest possible payload
     payload = {
         "owner": person_urn,
         "text": {
@@ -73,87 +86,59 @@ def try_shares_api(access_token: str, person_urn: str, content: str) -> bool:
     }
     
     try:
-        logging.info("📤 Attempting to post using shares API...")
-        logging.info(f"Shares API payload: {json.dumps(payload, indent=2)}")
+        logging.info("📤 Trying simple text post...")
+        logging.info(f"URL: {url}")
+        logging.info(f"Headers: {headers}")
+        logging.info(f"Payload: {json.dumps(payload, indent=2)}")
         
         response = requests.post(url, headers=headers, json=payload)
         
-        logging.info(f"Shares API response: {response.status_code}")
-        logging.info(f"Shares API response text: {response.text}")
+        logging.info(f"Simple post response: {response.status_code}")
+        logging.info(f"Simple post response text: {response.text}")
+        
+        result = {
+            "success": response.status_code in [200, 201],
+            "status_code": response.status_code,
+            "response_text": response.text,
+            "url_used": url,
+            "payload_used": payload
+        }
         
         if response.status_code in [200, 201]:
-            logging.info("✅ LinkedIn post created successfully using shares API!")
-            return True
+            logging.info("✅ Simple LinkedIn post SUCCESS!")
+        elif response.status_code == 401:
+            result["error"] = "Access token invalid or expired"
+        elif response.status_code == 403:
+            result["error"] = "Missing permissions - need w_member_social scope"
+        elif response.status_code == 422:
+            result["error"] = "Invalid request format"
         else:
-            logging.error(f"❌ Shares API failed: {response.status_code} {response.text}")
-            return False
-            
+            result["error"] = f"Unexpected error: {response.status_code}"
+        
+        return result
+        
     except Exception as e:
-        logging.error(f"❌ Exception with shares API: {e}")
-        return False
+        logging.error(f"❌ Exception in simple post: {e}")
+        return {"success": False, "error": str(e)}
 
-def try_ugc_posts_api(access_token: str, person_urn: str, content: str) -> bool:
-    """Try posting using the ugcPosts API"""
-    url = "https://api.linkedin.com/v2/ugcPosts"
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0"
-    }
-
-    payload = {
-        "author": person_urn,
-        "lifecycleState": "PUBLISHED",
-        "specificContent": {
-            "com.linkedin.ugc.ShareContent": {
-                "shareCommentary": {
-                    "text": content
-                },
-                "shareMediaCategory": "NONE"
-            }
-        },
-        "visibility": {
-            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
-        }
-    }
-
-    try:
-        logging.info("📤 Attempting to post using ugcPosts API...")
-        logging.info(f"UGC API payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(url, headers=headers, json=payload)
-        
-        logging.info(f"UGC API response: {response.status_code}")
-        logging.info(f"UGC API response text: {response.text}")
-        
-        if response.status_code == 201:
-            logging.info("✅ LinkedIn post created successfully using ugcPosts API!")
-            return True
-        else:
-            logging.error(f"❌ UGC API failed: {response.status_code} {response.text}")
-            return False
-            
-    except Exception as e:
-        logging.error(f"❌ Exception with ugcPosts API: {e}")
-        return False
-
-def verify_linkedin_permissions(access_token: str) -> dict:
-    """Verify what permissions the access token has"""
-    url = "https://api.linkedin.com/v2/introspection"
+def post_linkedin_content(access_token: str, content: str) -> bool:
+    """Main posting function with enhanced debugging"""
     
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
+    logging.info("🚀 Starting LinkedIn post with enhanced debugging...")
     
-    try:
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logging.error(f"Failed to verify permissions: {response.status_code} {response.text}")
-            return {}
-    except Exception as e:
-        logging.error(f"Exception verifying permissions: {e}")
-        return {}
+    # Step 1: Check permissions
+    permissions = check_linkedin_permissions(access_token)
+    logging.info(f"Permission check result: {permissions}")
+    
+    # Step 2: Try simple post
+    result = try_simple_text_post(access_token, content)
+    
+    # Log full debugging info
+    logging.info("=== LINKEDIN POST DEBUG INFO ===")
+    logging.info(f"Success: {result.get('success', False)}")
+    logging.info(f"Status Code: {result.get('status_code')}")
+    logging.info(f"Error: {result.get('error', 'None')}")
+    logging.info(f"Response: {result.get('response_text', 'None')}")
+    logging.info("===============================")
+    
+    return result.get('success', False)
