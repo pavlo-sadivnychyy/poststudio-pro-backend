@@ -98,7 +98,7 @@ def create_linkedin_post_new_api(access_token: str, content: str) -> dict:
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
         "X-Restli-Protocol-Version": "2.0.0",
-        "LinkedIn-Version": "202401"  # Use the API version from your screenshot
+        "LinkedIn-Version": "202401"  # Fixed: Use correct version from screenshot
     }
     
     # New API payload format
@@ -117,20 +117,26 @@ def create_linkedin_post_new_api(access_token: str, content: str) -> dict:
     try:
         logging.info("📤 Attempting to post using new REST API...")
         logging.info(f"URL: {url}")
-        logging.info(f"Headers: {headers}")
+        logging.info(f"Headers being sent: {headers}")
         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
+        
+        # Log each header individually to debug
+        for key, value in headers.items():
+            logging.info(f"Header {key}: {value}")
         
         response = requests.post(url, headers=headers, json=payload)
         
         logging.info(f"REST API response: {response.status_code}")
         logging.info(f"REST API response text: {response.text}")
+        logging.info(f"Response headers: {dict(response.headers)}")
         
         result = {
             "success": response.status_code in [200, 201],
             "status_code": response.status_code,
             "response_text": response.text,
             "url_used": url,
-            "payload_used": payload
+            "payload_used": payload,
+            "headers_sent": headers
         }
         
         if response.status_code in [200, 201]:
