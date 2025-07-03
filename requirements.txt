@@ -8,3 +8,4 @@ openai>=1.0.0
 PyJWT
 email-validator>=2.0.0
 alembic
+APScheduler
