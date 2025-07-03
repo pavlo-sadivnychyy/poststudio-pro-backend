@@ -16,13 +16,13 @@ class User(Base):
     industry = Column(String, nullable=True)
     
     # Notification preferences
-    auto_posting_notifications = Column(Boolean, default=True)
-    general_notifications = Column(Boolean, default=True)
-    weekly_email_reports = Column(Boolean, default=True)
+    auto_posting_notifications = Column(Boolean, default=False)
+    general_notifications = Column(Boolean, default=False)
+    weekly_email_reports = Column(Boolean, default=False)
     
     # === New AI automation settings ===
-    auto_posting = Column(Boolean, default=True)
-    auto_commenting = Column(Boolean, default=True)
+    auto_posting = Column(Boolean, default=False)
+    auto_commenting = Column(Boolean, default=False)
     post_frequency = Column(Integer, default=2)          # Posts per day
     comment_frequency = Column(Integer, default=5)       # Comments per day
     personality_type = Column(String, default='professional')
