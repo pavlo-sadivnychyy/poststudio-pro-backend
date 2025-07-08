@@ -65,6 +65,7 @@ def get_profile(current_user = Depends(get_current_user)):
         "avoid_topics": current_user.avoid_topics,
 
         "content_templates": current_user.content_templates,
+        "schedule_settings": current_user.schedule_settings,
 
         "created_at": current_user.created_at,
         "updated_at": current_user.updated_at,
