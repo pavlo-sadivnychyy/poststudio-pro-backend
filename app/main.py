@@ -12,7 +12,8 @@ app.add_middleware(
 
 print("🚀 Starting FastAPI application...")
 
-# Import routes one by one with error handling
+# --- your existing routers ---
+
 try:
     from app.routes import auth
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -34,7 +35,6 @@ try:
 except Exception as e:
     print(f"❌ Auto-posting router failed: {e}")
 
-# Add LinkedIn Analytics router
 try:
     from app.routes import linkedin_analytics
     app.include_router(linkedin_analytics.router, prefix="/me", tags=["linkedin-analytics"])
@@ -42,7 +42,6 @@ try:
 except Exception as e:
     print(f"❌ LinkedIn Analytics router failed: {e}")
 
-# Other routers
 try:
     from app.routes import billing
     app.include_router(billing.router, prefix="/billing", tags=["billing"])
@@ -99,7 +98,6 @@ try:
 except Exception as e:
     print(f"❌ Schedule router failed: {e}")
 
-# Auto-reactions (keep existing)
 try:
     from app.routes import auto_reactions
     app.include_router(auto_reactions.router, prefix="/me", tags=["auto-reactions"])
@@ -107,7 +105,24 @@ try:
 except Exception as e:
     print(f"⚠️  Auto-reactions router not available: {e}")
 
-# Initialize scheduler and database
+# --- new WayForPay subscription routers ---
+
+try:
+    from app.routes import payments
+    app.include_router(payments.router, prefix="/payments", tags=["payments"])
+    print("✅ Payments (WayForPay) subscription router loaded")
+except Exception as e:
+    print(f"❌ Payments router failed: {e}")
+
+try:
+    from app.routes import wayforpay_callback
+    app.include_router(wayforpay_callback.router, prefix="/payments", tags=["payments"])
+    print("✅ WayForPay callback router loaded")
+except Exception as e:
+    print(f"❌ WayForPay callback router failed: {e}")
+
+# --- scheduler & DB init ---
+
 try:
     from app.core.scheduler import start_scheduler, shutdown_scheduler
     print("✅ Scheduler imports loaded")
@@ -142,7 +157,8 @@ async def on_shutdown():
     except Exception as e:
         print(f"❌ Scheduler stop failed: {e}")
 
-# Debug endpoint to see all routes
+# --- debug & health endpoints ---
+
 @app.get("/debug/routes")
 async def debug_routes():
     routes = []
@@ -158,7 +174,6 @@ async def debug_routes():
         "routes": sorted(routes, key=lambda x: x['path'])
     }
 
-# Health check endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "message": "PostStudio Pro Backend is running"}

@@ -9,3 +9,4 @@ PyJWT
 email-validator>=2.0.0
 alembic
 APScheduler
+python-dateutil
