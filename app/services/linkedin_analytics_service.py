@@ -11,26 +11,32 @@ logger = logging.getLogger(__name__)
 class LinkedInAnalyticsService:
     """
     LinkedIn Analytics & Performance Tracking Service
-    Analyzes user's own posts and provides insights
     """
     
     def __init__(self):
         self.base_url = "https://api.linkedin.com"
     
     def get_user_posts(self, access_token: str, count: int = 50) -> List[Dict]:
-        """Get user's recent posts"""
-        url = f"{self.base_url}/v2/shares"
+        """Get user's recent posts using correct API endpoint"""
+        # First get the user's profile URN
+        profile_urn = self.get_user_profile_urn(access_token)
+        if not profile_urn:
+            return []
+        
+        # Use the correct endpoint for user posts
+        url = f"{self.base_url}/v2/posts"
         
         headers = {
             "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0"
         }
         
         params = {
-            "q": "owners",
-            "owners": f"urn:li:person:{self.get_user_id(access_token)}",
-            "sortBy": "LAST_MODIFIED",
-            "count": count
+            "q": "author",
+            "author": profile_urn,
+            "sortBy": "CREATED_TIME",
+            "count": min(count, 100)  # LinkedIn limits to 100
         }
         
         try:
@@ -49,29 +55,27 @@ class LinkedInAnalyticsService:
             return []
     
     def get_post_statistics(self, access_token: str, post_urn: str) -> Dict:
-        """Get detailed statistics for a specific post"""
-        # Extract post ID from URN
-        post_id = post_urn.split(":")[-1] if ":" in post_urn else post_urn
-        
-        url = f"{self.base_url}/v2/organizationalEntityShareStatistics"
+        """Get statistics for a specific post"""
+        # Use the correct endpoint for post statistics
+        url = f"{self.base_url}/v2/socialActions/{post_urn}"
         
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
         
-        params = {
-            "q": "organizationalEntity",
-            "organizationalEntity": f"urn:li:person:{self.get_user_id(access_token)}",
-            "shares": post_urn
-        }
-        
         try:
-            response = requests.get(url, headers=headers, params=params)
+            response = requests.get(url, headers=headers)
             
             if response.status_code == 200:
                 data = response.json()
-                return data.get("elements", [{}])[0] if data.get("elements") else {}
+                return {
+                    "likeCount": data.get("likesSummary", {}).get("totalLikes", 0),
+                    "commentCount": data.get("commentsSummary", {}).get("totalComments", 0),
+                    "shareCount": data.get("sharesSummary", {}).get("totalShares", 0),
+                    "impressionCount": data.get("impressionCount", 0),
+                    "clickCount": data.get("clickCount", 0)
+                }
             else:
                 logger.warning(f"Could not get post stats: {response.status_code}")
                 return {}
@@ -80,9 +84,9 @@ class LinkedInAnalyticsService:
             logger.warning(f"Exception getting post stats: {e}")
             return {}
     
-    def get_user_id(self, access_token: str) -> str:
-        """Get user's LinkedIn ID"""
-        url = f"{self.base_url}/v2/userinfo"
+    def get_user_profile_urn(self, access_token: str) -> str:
+        """Get user's profile URN"""
+        url = f"{self.base_url}/v2/people/~"
         
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -93,12 +97,58 @@ class LinkedInAnalyticsService:
             response = requests.get(url, headers=headers)
             if response.status_code == 200:
                 profile = response.json()
-                return profile.get("sub", "")
+                return f"urn:li:person:{profile.get('id', '')}"
+            return ""
+        except Exception as e:
+            logger.error(f"Error getting user profile: {e}")
+            return ""
+    
+    def get_user_id(self, access_token: str) -> str:
+        """Get user's LinkedIn ID"""
+        url = f"{self.base_url}/v2/people/~"
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                profile = response.json()
+                return profile.get("id", "")
             return ""
         except Exception as e:
             logger.error(f"Error getting user ID: {e}")
             return ""
     
+    def get_profile_analytics(self, access_token: str) -> Dict:
+        """Get profile analytics data"""
+        profile_urn = self.get_user_profile_urn(access_token)
+        if not profile_urn:
+            return {}
+        
+        url = f"{self.base_url}/v2/networkSizes/{profile_urn}"
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    "connections": data.get("firstDegreeSize", 0),
+                    "followers": data.get("followerCount", 0)
+                }
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting profile analytics: {e}")
+            return {}
+    
+    # ... rest of the methods remain the same
     def analyze_post_performance(self, posts: List[Dict], post_stats: List[Dict]) -> Dict:
         """Analyze overall post performance and provide insights"""
         if not posts:
@@ -109,10 +159,17 @@ class LinkedInAnalyticsService:
         for i, post in enumerate(posts):
             stats = post_stats[i] if i < len(post_stats) else {}
             
+            # Extract post content properly
+            content = ""
+            if "content" in post:
+                content = post["content"].get("text", "")
+            elif "text" in post:
+                content = post["text"].get("text", "") if isinstance(post["text"], dict) else str(post["text"])
+            
             enriched_post = {
                 "id": post.get("id", ""),
-                "text": post.get("text", {}).get("text", ""),
-                "created_time": post.get("created", {}).get("time", 0),
+                "text": content,
+                "created_time": post.get("createdTime", 0),
                 "likes": stats.get("likeCount", 0),
                 "comments": stats.get("commentCount", 0),
                 "shares": stats.get("shareCount", 0),
@@ -259,8 +316,14 @@ def get_user_analytics(db: Session, user: User) -> Dict:
             stats = analytics_service.get_post_statistics(user.access_token, post_urn)
             post_stats.append(stats)
         
+        # Get profile analytics
+        profile_analytics = analytics_service.get_profile_analytics(user.access_token)
+        
         # Analyze performance
         analysis = analytics_service.analyze_post_performance(posts, post_stats)
+        
+        # Add profile data to analysis
+        analysis["profile"] = profile_analytics
         
         return {
             "success": True,
